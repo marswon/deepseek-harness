@@ -23,6 +23,9 @@ publish:
   repo: deepseek-harness
 mac:
   category: public.app-category.developer-tools
+  # Space-free artifact names: GitHub rewrites spaces to dots on upload, but
+  # latest.yml references the hyphenated form, which 404s the updater.
+  artifactName: DeepSeek-Harness-${version}-${arch}.${ext}
   target:
     - dmg
     - zip
@@ -37,6 +40,9 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  artifactName: DeepSeek-Harness-Setup-${version}.${ext}
+portable:
+  artifactName: DeepSeek-Harness-${version}.${ext}
 linux:
   category: Development
   target:
