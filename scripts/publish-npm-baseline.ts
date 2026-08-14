@@ -25,7 +25,9 @@ const DEFAULT_OUTPUT_DIRECTORY = '.artifacts/npm-baseline'
 const PACKAGE_PATTERNS = [
   'vendor/*/package.json',
   'packages/*/*/package.json',
-  'apps/*/package.json',
+  // apps/desktop ships as an Electron bundle, not an npm package.
+  'apps/cli/package.json',
+  'apps/web/package.json',
 ] as const
 const DEPENDENCY_SECTIONS = [
   'dependencies',

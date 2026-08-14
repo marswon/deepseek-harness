@@ -56,6 +56,9 @@ const appPackageFiles: Readonly<Record<string, readonly string[]>> = {
   // The Web build emits sourcemaps for browser debugging; publishing them is
   // what the payload policy forbids, so the bundle ships without them.
   '@deepseek-ai/dsh-web-frontend': ['dist', '!dist/**/*.map'],
+  // The desktop shell never reaches npm (Electron bundle only); the policy
+  // exists so an accidental publish carries just the shell, never staging/.
+  '@deepseek-ai/dsh-desktop': ['lib', 'scripts', 'electron-builder.yml'],
 }
 
 /** The subset of package.json fields this constraint check cares about. */
@@ -240,10 +243,12 @@ function checkWorkspace({ dir, manifest }: WorkspaceManifest): string[] {
       || manifest.repository.directory !== expectedDirectory) {
       errors.push(`${label}: published Landlock package repository must use ${repositoryUrl} with directory ${expectedDirectory} for trusted publishing`)
     }
-  } else if (releaseMemberDirectory.test(dir)) {
+  } else if (releaseMemberDirectory.test(dir) && dir !== 'apps/desktop') {
     // Release members state that they are publishable: npm refuses a private
     // package, and the repository field is how a consumer finds the source of
-    // the package it installed.
+    // the package it installed. apps/desktop is exempt: it ships as an
+    // Electron bundle through desktop-release.yml, not as an npm package, and
+    // the dsh release family names apps/cli and apps/web explicitly.
     //
     // Access is per release sequence, not per scope: the vendored framework and
     // the Landlock packages publish publicly because outside consumers install

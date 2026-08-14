@@ -193,10 +193,12 @@ export abstract class ReleaseFamily {
   abstract readonly installedEntry: InstalledEntry | undefined
 }
 
-/** `packages/*` and `apps/*`: one shared version across the whole family. */
+/** `packages/*` and the publishable apps (apps/cli, apps/web): one shared version across the whole family. */
 class DshFamily extends ReleaseFamily {
   readonly id = 'dsh'
-  readonly patterns = ['packages/*/*/package.json', 'apps/*/package.json'] as const
+  // apps/desktop ships as an Electron bundle through desktop-release.yml, not
+  // as an npm package, so the publish set names the two publishable apps.
+  readonly patterns = ['packages/*/*/package.json', 'apps/cli/package.json', 'apps/web/package.json'] as const
   readonly tagPrefix = 'dsh-v'
 
   /**

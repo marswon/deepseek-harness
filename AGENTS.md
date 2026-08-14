@@ -10,6 +10,7 @@ DeepSeek Harness is a plugin-based agent harness on vendored Cordis: **everythin
 
 ```
 vendor/      Vendored Cordis source — manifest + sync procedure in vendor/README.md
+apps/        Product entry points: dsh CLI (apps/cli), web frontend (apps/web), desktop shell (apps/desktop)
 packages/    @deepseek-ai/dsh-<pkg> workspaces at packages/<group>/<pkg>/
   core/        product API spine: session, system-prompt, tools, agent, agent-loop
   api/         Remote BFF assembly and Typert RPC gateway

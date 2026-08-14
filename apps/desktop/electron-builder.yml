@@ -1,0 +1,43 @@
+# electron-builder configuration for the DeepSeek Harness desktop shell.
+# The app dir ships only the main/preload bundles; the Harness runtime closure
+# produced by scripts/stage-runtime.mjs rides as extraResources.
+appId: com.deepseek.harness
+productName: DeepSeek Harness
+directories:
+  output: release
+files:
+  - lib/**
+  - package.json
+# The staged Harness runtime is copied by scripts/after-pack.cjs — the
+# extraResources file matcher excludes node_modules even with an explicit
+# filter, and the runtime IS a node_modules tree.
+afterPack: scripts/after-pack.cjs
+# node-pty ships N-API prebuilds that load under ELECTRON_RUN_AS_NODE as-is;
+# there is nothing for electron-builder to rebuild.
+npmRebuild: false
+asar: true
+publish:
+  provider: github
+  owner: marswon
+  repo: deepseek-harness
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  # The release CI passes --config.mac.notarize=true with Apple credentials;
+  # local packaging stays unsigned.
+  notarize: false
+win:
+  target:
+    - nsis
+    - portable
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+linux:
+  category: Development
+  target:
+    - AppImage
+    - deb

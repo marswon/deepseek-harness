@@ -1,0 +1,41 @@
+{
+  "name": "@deepseek-ai/dsh-desktop",
+  "description": "Desktop shell for DeepSeek Harness: Electron main process supervising a local dsh web child process",
+  "version": "0.1.0-rc.5",
+  "private": true,
+  "productName": "DeepSeek Harness",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "apps/desktop"
+  },
+  "type": "module",
+  "main": "lib/main/index.js",
+  "files": [
+    "lib",
+    "scripts",
+    "electron-builder.yml"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown && electron .",
+    "stage": "node scripts/stage-runtime.mjs",
+    "package": "npm run stage && electron-builder",
+    "package:mac": "node scripts/verify-target.mjs darwin && npm run stage && electron-builder --mac",
+    "package:mac:arm64": "node scripts/verify-target.mjs darwin arm64 && npm run stage && electron-builder --mac --arm64",
+    "package:mac:x64": "node scripts/verify-target.mjs darwin x64 && npm run stage && electron-builder --mac --x64",
+    "package:win": "node scripts/verify-target.mjs win32 x64 && npm run stage && electron-builder --win --x64",
+    "stage:win": "node scripts/stage-runtime.mjs win32 x64",
+    "package:win:cross": "npm run stage:win && electron-builder --win --x64 --config.win.signAndEditExecutable=false",
+    "package:linux": "node scripts/verify-target.mjs linux x64 && npm run stage && electron-builder --linux --x64"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
+    "tsdown": "^0.22.2"
+  }
+}

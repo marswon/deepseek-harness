@@ -24,6 +24,10 @@ packages:
 # builds must resolve those matching names to this workspace's pinned sources.
 linkWorkspacePackages: true
 
+# The desktop staging deploy runs a nested production install inside the repo;
+# purging its stale node_modules must not prompt (no TTY in scripts/CI).
+confirmModulesPurge: false
+
 overrides:
   '@deepseek-ai/cosmokit': 'link:vendor/cosmokit'
   '@deepseek-ai/schemastery': 'link:vendor/schemastery'
@@ -40,6 +44,10 @@ peerDependencyRules:
 allowBuilds:
   esbuild: true
   lefthook: true
+  # Desktop shell: the postinstall downloads the Electron binary.
+  electron: true
+  # electron-builder dep tree; Windows-only helper whose build script we don't need.
+  electron-winstaller: false
   # Cross-platform boundary for the persistent PTY backend, including ConPTY on Windows.
   node-pty: true
   # Pulled in by @earendil-works/pi-ai (optional LLM API backend). pnpm lists

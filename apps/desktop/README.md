@@ -1,0 +1,49 @@
+# @deepseek-ai/dsh-desktop
+
+English | [中文](README.zh.md)
+
+Desktop shell for DeepSeek Harness: an Electron main process that supervises a local `dsh web` child process and loads its UI in a hardened window. It consumes the workspace sources directly — no patches, no pinned npm release — so the desktop app tracks the repository version.
+
+## Runtime architecture
+
+```
+Electron main (apps/desktop)
+├── userData/                     desktop-owned data root (survives upgrades)
+│   ├── harness/                  $DSH_HOME: profiles, sessions, settings, credentials
+│   ├── launch-root/              default project directory (no startup prompt)
+│   └── logs/harness.log          child stdout/stderr
+├── Harness child process         node|Electron-as-Node running `dsh web --host 127.0.0.1 --port 0`
+│   └── ready line on stdout →    `dsh web: http://127.0.0.1:<port>`
+└── BrowserWindow                 contextIsolation + sandbox, loopback-only navigation
+     └── http://127.0.0.1:<port>  Harness web UI
+```
+
+- Development spawns the system Node against the repository build (`apps/cli/lib/bin.js`); packaged builds re-use the Electron binary as Node (`ELECTRON_RUN_AS_NODE=1`) against the staged runtime closure. Both pass `--expose-internals` so the Cordis loader never needs the native `node-addon-require-builtin` fallback.
+- node-pty ships N-API prebuilds, which are ABI-stable across Node and Electron; no native rebuild is needed at packaging time (`npmRebuild: false`).
+- Only loopback HTTP and local shell pages may load in the window; other http(s) targets open in the system browser. The renderer never gets Node access.
+
+## Commands
+
+```sh
+pnpm run build                                        # repo root first: lib/ + apps/web/dist
+pnpm --filter @deepseek-ai/dsh-desktop run dev        # build the shell and open it
+pnpm --filter @deepseek-ai/dsh-desktop run stage      # materialize the production runtime closure
+pnpm --filter @deepseek-ai/dsh-desktop run package:mac:arm64   # plus :mac:x64 / :win / :linux
+pnpm --filter @deepseek-ai/dsh-desktop run package:win:cross   # unsigned Win x64 build from a non-Windows host
+```
+
+Packaging requires a host matching the target platform/arch (`scripts/verify-target.mjs` enforces it) because node-pty prebuilds and the landlock launcher ship per platform. macOS artifacts are unsigned by default; the release CI enables notarization with Apple credentials. `package:win:cross` is the deliberate exception: it stages the win32/x64 binary packages fetched from the registry (`stage:win`) and builds an unsigned NSIS/Portable artifact from any host with `signAndEditExecutable=false` — the exe keeps the stock Electron metadata, so prefer the Windows CI runner for releases.
+
+## Layout
+
+```
+src/main/     Electron main process: harness lifecycle, window, menu, updates, shell page
+src/preload/  sandboxed-renderer bridge (shell-page actions only)
+scripts/      runtime staging, target verification, and the afterPack runtime copy
+tests/        vitest specs for the electron-free logic plus a built-runtime boot smoke
+electron-builder.yml
+```
+
+## Failure recovery
+
+Startup watches for the child's ready line (two-minute timeout). A child that exits early, goes silent, or dies mid-session leaves the window on a shell page with the error, the log tail, and Retry / View Logs / Quit actions; the same actions live in the Harness menu along with Restart Harness.
