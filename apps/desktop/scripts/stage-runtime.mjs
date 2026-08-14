@@ -13,11 +13,16 @@
  * apps/web/dist must exist). Output: apps/desktop/staging/.
  */
 import { existsSync, globSync } from 'node:fs'
-import { cp, lstat, mkdir, readdir, readFile, readlink, rm, stat } from 'node:fs/promises'
+import { chmod, copyFile, cp, lstat, mkdir, readdir, readFile, readlink, rm, stat } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+/** Pinned Node.js runtime bundled for the Harness child; satisfies the repo engines (^22.19 || >=24). */
+const NODE_RUNTIME_VERSION = '22.21.1'
+/** Node.js dist mirror; npmmirror serves both China and global routes. */
+const NODE_DIST_MIRROR = process.env['NODE_DIST_MIRROR'] ?? 'https://npmmirror.com/mirrors/node'
 
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = resolve(desktopDir, '../..')
@@ -110,12 +115,16 @@ async function materializeStagedLinks() {
   }
 }
 
-/** Fail loudly when the staged payload cannot serve the web UI. */
-async function verifyStagedPayload() {
+/**
+ * Fail loudly when the staged payload cannot serve the web UI.
+ * @param platform - the staging target platform.
+ */
+async function verifyStagedPayload(platform) {
   for (const required of [
     join(staging, 'lib/bin.js'),
     join(staging, 'node_modules/@deepseek-ai/dsh-web-frontend/dist/index.html'),
     join(staging, 'node_modules/node-pty/package.json'),
+    join(staging, platform === 'win32' ? 'node-runtime/node.exe' : 'node-runtime/node'),
   ]) {
     if (!existsSync(required)) throw new Error(`stage-runtime: staged payload incomplete, missing ${required}.`)
   }
@@ -204,6 +213,46 @@ async function ensureRuntimeClosure() {
 const ARCH_TOKENS = ['x64', 'arm64', 'ia32', 'arm', 'riscv64', 'ppc64', 's390x', 'loong64', 'wasm32']
 
 /**
+ * Fetch a real Node.js runtime for the Harness child. Electron-as-Node is NOT
+ * usable: Electron's V8 sandbox makes N-API raw-memory views fatal
+ * (`koffi.view` in the win32 dialog worker crashes with
+ * `Error::New napi_get_last_error_info`, reproduced on darwin too), and
+ * node-pty's N-API prebuilds load under any Node 22/24, so a bundled stock
+ * Node is strictly safer. Output: staging/node-runtime/{node,node.exe}.
+ * @param platform - target platform ('darwin' | 'win32' | 'linux').
+ * @param arch - target arch ('arm64' | 'x64').
+ */
+async function fetchNodeRuntime(platform, arch) {
+  const nodePlatform = platform === 'win32' ? 'win' : platform
+  const archive = platform === 'win32'
+    ? `node-v${NODE_RUNTIME_VERSION}-${nodePlatform}-${arch}.zip`
+    : `node-v${NODE_RUNTIME_VERSION}-${nodePlatform}-${arch}.tar.gz`
+  const url = `${NODE_DIST_MIRROR}/v${NODE_RUNTIME_VERSION}/${archive}`
+  const tmp = join(desktopDir, '.node-tmp')
+  await rm(tmp, { recursive: true, force: true })
+  await mkdir(tmp, { recursive: true })
+  try {
+    const archivePath = join(tmp, archive)
+    console.log(`stage-runtime: fetching Node.js runtime ${url}`)
+    run('download', 'curl', ['-fsSL', '-o', archivePath, url])
+    const destination = join(staging, 'node-runtime')
+    await rm(destination, { recursive: true, force: true })
+    await mkdir(destination, { recursive: true })
+    if (platform === 'win32') {
+      run('extract', 'unzip', ['-q', archivePath, `node-v${NODE_RUNTIME_VERSION}-${nodePlatform}-${arch}/node.exe`, '-d', tmp])
+      await copyFile(join(tmp, `node-v${NODE_RUNTIME_VERSION}-${nodePlatform}-${arch}/node.exe`), join(destination, 'node.exe'))
+    } else {
+      run('extract', 'tar', ['-xzf', archivePath, '-C', tmp])
+      await copyFile(join(tmp, `node-v${NODE_RUNTIME_VERSION}-${nodePlatform}-${arch}/bin/node`), join(destination, 'node'))
+      await chmod(join(destination, 'node'), 0o755)
+    }
+    console.log(`stage-runtime: bundled Node.js v${NODE_RUNTIME_VERSION} for ${platform}/${arch}`)
+  } finally {
+    await rm(tmp, { recursive: true, force: true })
+  }
+}
+
+/**
  * Whether a skipped package name looks like a platform binary for the cross
  * target, e.g. `@koromix/koffi-win32-x64` for win32/x64.
  * @param name - package name.
@@ -280,5 +329,6 @@ const { skipped, ranges: closureRanges } = await ensureRuntimeClosure()
 if (targetPlatform !== undefined) {
   await fetchPlatformPackages(skipped, closureRanges, targetPlatform, targetArch ?? process.arch)
 }
-await verifyStagedPayload()
+await fetchNodeRuntime(targetPlatform ?? process.platform, targetArch ?? process.arch)
+await verifyStagedPayload(targetPlatform ?? process.platform)
 console.log(`stage-runtime: staged Harness runtime at ${staging}`)

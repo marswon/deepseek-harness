@@ -18,8 +18,8 @@ Electron main (apps/desktop)
      └── http://127.0.0.1:<port>  Harness web UI
 ```
 
-- Development spawns the system Node against the repository build (`apps/cli/lib/bin.js`); packaged builds re-use the Electron binary as Node (`ELECTRON_RUN_AS_NODE=1`) against the staged runtime closure. Both pass `--expose-internals` so the Cordis loader never needs the native `node-addon-require-builtin` fallback.
-- node-pty ships N-API prebuilds, which are ABI-stable across Node and Electron; no native rebuild is needed at packaging time (`npmRebuild: false`).
+- Development spawns the system Node against the repository build (`apps/cli/lib/bin.js`); packaged builds run the staged runtime closure under a stock Node.js runtime bundled at `dsh-runtime/node-runtime` (fetched per target platform by the staging script). Both pass `--expose-internals` so the Cordis loader never needs the native `node-addon-require-builtin` fallback. The Electron binary is not reused as Node: Electron's V8 sandbox makes N-API raw-memory views fatal (`koffi.view` in the win32 dialog worker).
+- node-pty ships N-API prebuilds, which are ABI-stable across Node 22/24; no native rebuild is needed at packaging time (`npmRebuild: false`).
 - Only loopback HTTP and local shell pages may load in the window; other http(s) targets open in the system browser. The renderer never gets Node access.
 
 ## Commands

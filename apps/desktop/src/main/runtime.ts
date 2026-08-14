@@ -4,13 +4,17 @@ import type { DesktopPaths } from './paths.ts'
 /**
  * Where the Harness runtime comes from. Development runs the repository's
  * built CLI with the system Node; a packaged app runs the staged runtime
- * closure with the Electron binary itself re-used as Node
- * (`ELECTRON_RUN_AS_NODE`), which keeps native-module ABI (node-pty) matched
- * to the `@electron/rebuild` pass done at packaging time.
+ * closure with the Node.js runtime bundled under `dsh-runtime/node-runtime`.
+ *
+ * The Electron binary is deliberately NOT reused as Node
+ * (`ELECTRON_RUN_AS_NODE`): Electron's V8 sandbox makes N-API raw-memory
+ * views fatal — `koffi.view` in the win32 dialog worker crashes with
+ * `Error::New napi_get_last_error_info` — while node-pty's N-API prebuilds
+ * load under any stock Node 22/24, so a bundled Node is strictly safer.
  */
 export type RuntimeMode =
   | { readonly kind: 'development'; readonly repoRoot: string; readonly nodeCommand: string }
-  | { readonly kind: 'packaged'; readonly resourcesPath: string; readonly electronExecPath: string }
+  | { readonly kind: 'packaged'; readonly resourcesPath: string }
 
 /** A fully-resolved Harness child invocation. */
 export interface HarnessLaunch {
@@ -33,6 +37,15 @@ export function harnessBinPath(mode: RuntimeMode): string {
     case 'packaged':
       return join(mode.resourcesPath, 'dsh-runtime/lib/bin.js')
   }
+}
+
+/**
+ * The bundled Node.js executable for a packaged build.
+ * @param resourcesPath - the app's resources directory.
+ * @returns the node-runtime binary path for the current platform.
+ */
+export function bundledNodePath(resourcesPath: string): string {
+  return join(resourcesPath, 'dsh-runtime/node-runtime', process.platform === 'win32' ? 'node.exe' : 'node')
 }
 
 /**
@@ -59,10 +72,10 @@ export function buildHarnessLaunch(mode: RuntimeMode, paths: DesktopPaths, baseE
       }
     case 'packaged':
       return {
-        command: mode.electronExecPath,
+        command: bundledNodePath(mode.resourcesPath),
         args: ['--expose-internals', harnessBinPath(mode), ...webArgs],
         cwd: paths.launchRoot,
-        env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
+        env,
       }
   }
 }

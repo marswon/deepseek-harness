@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildHarnessLaunch, harnessBinPath, parseReadyUrl } from '../src/main/runtime.ts'
+import { buildHarnessLaunch, bundledNodePath, harnessBinPath, parseReadyUrl } from '../src/main/runtime.ts'
 import { resolveDesktopPaths } from '../src/main/paths.ts'
 
 const paths = resolveDesktopPaths('/userdata')
@@ -25,7 +25,7 @@ describe('harnessBinPath', () => {
   })
 
   it('resolves the staged runtime bin in packaged builds', () => {
-    expect(harnessBinPath({ kind: 'packaged', resourcesPath: '/res', electronExecPath: '/electron' }))
+    expect(harnessBinPath({ kind: 'packaged', resourcesPath: '/res' }))
       .toBe('/res/dsh-runtime/lib/bin.js')
   })
 })
@@ -45,15 +45,16 @@ describe('buildHarnessLaunch', () => {
     expect(launch.env['ELECTRON_RUN_AS_NODE']).toBeUndefined()
   })
 
-  it('reuses the Electron binary as node in packaged builds', () => {
+  it('runs the bundled Node runtime in packaged builds', () => {
     const launch = buildHarnessLaunch(
-      { kind: 'packaged', resourcesPath: '/res', electronExecPath: '/app/electron' },
+      { kind: 'packaged', resourcesPath: '/res' },
       paths,
       {},
     )
-    expect(launch.command).toBe('/app/electron')
+    expect(launch.command).toBe(bundledNodePath('/res'))
+    expect(launch.command).toMatch(/node-runtime[\\/]node(\.exe)?$/)
     expect(launch.args).toEqual(['--expose-internals', '/res/dsh-runtime/lib/bin.js', 'web', '--host', '127.0.0.1', '--port', '0'])
-    expect(launch.env['ELECTRON_RUN_AS_NODE']).toBe('1')
+    expect(launch.env['ELECTRON_RUN_AS_NODE']).toBeUndefined()
     expect(launch.env['DSH_HOME']).toBe(paths.dshHome)
   })
 

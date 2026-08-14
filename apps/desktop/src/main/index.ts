@@ -22,7 +22,7 @@ import { createMainWindow } from './window.ts'
 const libDir = dirname(fileURLToPath(import.meta.url))
 
 const runtimeMode: RuntimeMode = app.isPackaged
-  ? { kind: 'packaged', resourcesPath: process.resourcesPath, electronExecPath: process.execPath }
+  ? { kind: 'packaged', resourcesPath: process.resourcesPath }
   : {
     kind: 'development',
     repoRoot: resolve(libDir, '../../../..'),
