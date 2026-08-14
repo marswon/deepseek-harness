@@ -1,7 +1,7 @@
 # Package the desktop shell for every supported platform. Runs on pull
 # requests touching apps/desktop so packaging regressions surface before
 # merge, and publishes artifacts to a GitHub Release when dispatched from a
-# dsh-desktop-v* tag.
+# v-prefixed semver tag (electron-updater rejects non-semver tags).
 name: Desktop (dsh)
 
 on:
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Upload artifacts to a GitHub Release. Must run from a dsh-desktop-v* tag.
+        description: Upload artifacts to a GitHub Release. Must run from a v-prefixed semver tag.
         required: true
         type: boolean
         default: false
