@@ -1,6 +1,6 @@
 # electron-builder configuration for the DeepSeek Harness desktop shell.
 # The app dir ships only the main/preload bundles; the Harness runtime closure
-# produced by scripts/stage-runtime.mjs rides as extraResources.
+# produced by scripts/stage-runtime.mjs is copied in by afterPack.
 appId: com.deepseek.harness
 productName: DeepSeek Harness
 directories:
@@ -10,9 +10,10 @@ files:
   - package.json
 # The staged Harness runtime is copied by scripts/after-pack.cjs — the
 # extraResources file matcher excludes node_modules even with an explicit
-# filter, and the runtime IS a node_modules tree.
+# filter, and the runtime IS a node_modules tree. Staging lives in the OS
+# temp dir (stage-runtime.mjs explains why it must stay outside the repo).
 afterPack: scripts/after-pack.cjs
-# node-pty ships N-API prebuilds that load under ELECTRON_RUN_AS_NODE as-is;
+# node-pty ships N-API prebuilds that load under any stock Node 22/24;
 # there is nothing for electron-builder to rebuild.
 npmRebuild: false
 asar: true

@@ -4,11 +4,12 @@
  * extraResources filters, so the copy happens here, verbatim.
  */
 const { cp } = require('node:fs/promises')
+const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 
 /** @param context - electron-builder AfterPackContext. */
 exports.default = async context => {
-  const staging = join(__dirname, '..', 'staging')
+  const staging = join(tmpdir(), 'dsh-desktop-staging')
   const resourcesDir = context.electronPlatformName === 'darwin'
     ? join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
     : join(context.appOutDir, 'resources')

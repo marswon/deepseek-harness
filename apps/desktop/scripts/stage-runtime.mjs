@@ -7,15 +7,19 @@
  * `pnpm deploy --legacy --prod` (the same route as
  * scripts/build-exe-for-python-sdk.ts), restores the direct dependencies the
  * legacy hoister drops beside the deploy source, replaces every remaining
- * symlink with real files, and verifies the payload can boot.
+ * symlink with real files, bundles a stock Node.js runtime for the target,
+ * and verifies the payload can boot.
  *
  * Prerequisites: `pnpm run build` at the repository root (lib/ and
- * apps/web/dist must exist). Output: apps/desktop/staging/.
+ * apps/web/dist must exist). Output: `$TMPDIR/dsh-desktop-staging/` — outside
+ * the repository because the deploy's nested install resolves the workspace
+ * root from any in-repo target and would prune its devDependencies.
  */
 import { existsSync, globSync } from 'node:fs'
 import { chmod, copyFile, cp, lstat, mkdir, readdir, readFile, readlink, rm, stat } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -26,7 +30,10 @@ const NODE_DIST_MIRROR = process.env['NODE_DIST_MIRROR'] ?? 'https://npmmirror.c
 
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = resolve(desktopDir, '../..')
-const staging = join(desktopDir, 'staging')
+// Staging lives OUTSIDE the repository: the legacy deploy's nested
+// `install --production` resolves the nearest pnpm-workspace.yaml upward and
+// would otherwise run at the workspace root, pruning its devDependencies.
+const staging = join(tmpdir(), 'dsh-desktop-staging')
 const cliSource = join(repoRoot, 'apps/cli')
 
 function run(step, command, args) {
