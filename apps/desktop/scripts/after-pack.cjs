@@ -65,4 +65,16 @@ exports.default = async context => {
   if (context.electronPlatformName === 'win32' && process.platform !== 'win32') {
     await embedWindowsExecutableMetadata(context)
   }
+
+  if (context.electronPlatformName === 'darwin' && process.env.CSC_LINK === undefined) {
+    // Without a Developer ID identity electron-builder skips signing entirely,
+    // leaving Electron's stock ad-hoc signature with a stale resource seal
+    // (app.asar and dsh-runtime changed after it was created). Re-seal so the
+    // bundle passes codesign --verify. When CI provides a certificate
+    // (CSC_LINK), electron-builder's own signing runs after this hook.
+    const execFile = require('node:util').promisify(require('node:child_process').execFile)
+    const appPath = join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
+    await execFile('codesign', ['--force', '--deep', '--sign', '-', appPath])
+    console.log(`after-pack: re-sealed ${context.packager.appInfo.productFilename}.app with an ad-hoc signature`)
+  }
 }

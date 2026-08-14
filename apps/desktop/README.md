@@ -34,7 +34,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:win:cross   # unsigned Win x6
 
 Packaging requires a host matching the target platform/arch (`scripts/verify-target.mjs` enforces it) because node-pty prebuilds and the landlock launcher ship per platform. macOS artifacts are unsigned by default; the release CI enables notarization with Apple credentials. `package:win:cross` is the deliberate exception: it stages the win32/x64 binary packages fetched from the registry (`stage:win`) and builds an unsigned NSIS/Portable artifact from any host with `signAndEditExecutable=false` (rcedit needs wine off Windows); `scripts/after-pack.cjs` then embeds `build/icon.ico` and the product version into the exe with resedit, so the installed app no longer shows the stock Electron icon and metadata.
 
-Release tags must be `v`-prefixed semver (`v0.1.0-rc.7`), not namespaced tags like `dsh-desktop-v*`: electron-updater's GitHub provider validates every tag in the releases feed with `semver.valid` and silently reports "No published versions on GitHub" when none parse.
+Release tags must be `v`-prefixed semver (`v0.1.0-rc.7`), not namespaced tags like `dsh-desktop-v*`: electron-updater's GitHub provider validates every tag in the releases feed with `semver.valid` and silently reports "No published versions on GitHub" when none parse. On macOS the app never updates in place: ad-hoc signed builds carry a per-binary cdhash designated requirement that Squirrel.Mac enforces against every update, so the updater links to the release page instead of downloading.
 
 ## Layout
 
