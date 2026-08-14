@@ -3,9 +3,54 @@
  * the app bundle. electron-builder's file matcher drops node_modules from
  * extraResources filters, so the copy happens here, verbatim.
  */
-const { cp } = require('node:fs/promises')
+const { cp, readFile, writeFile } = require('node:fs/promises')
 const { tmpdir } = require('node:os')
 const { join } = require('node:path')
+
+/**
+ * Embed the app icon and version metadata into the Windows executable.
+ * Cross-builds pass --config.win.signAndEditExecutable=false because rcedit
+ * needs wine off Windows, and that flag skips icon/metadata embedding too —
+ * so do it here with resedit, a pure-JS PE resource editor.
+ *
+ * @param context - electron-builder AfterPackContext.
+ */
+async function embedWindowsExecutableMetadata(context) {
+  const ResEdit = await require('resedit/cjs').load()
+  const { appInfo } = context.packager
+  const exePath = join(context.appOutDir, `${appInfo.productFilename}.exe`)
+  const exe = ResEdit.NtExecutable.from(await readFile(exePath), { ignoreCert: true })
+  const res = ResEdit.NtExecutableResource.from(exe)
+
+  const iconFile = ResEdit.Data.IconFile.from(await readFile(join(__dirname, '..', 'build', 'icon.ico')))
+  const icons = iconFile.icons.map(item => item.data)
+  const groups = ResEdit.Resource.IconGroupEntry.fromEntries(res.entries)
+  for (const group of groups) {
+    ResEdit.Resource.IconGroupEntry.replaceIconsForResource(res.entries, group.id, group.lang, icons)
+  }
+
+  const version = appInfo.version
+  const [major = 0, minor = 0, patch = 0] = version.split(/[.-]/).map(Number)
+  for (const vi of ResEdit.Resource.VersionInfo.fromEntries(res.entries)) {
+    const lang = typeof vi.lang === 'number' ? vi.lang : 1033
+    vi.setFileVersion(major, minor, patch, 0, lang)
+    vi.setProductVersion(major, minor, patch, 0, lang)
+    vi.setStringValues(
+      { lang, codepage: 1200 },
+      {
+        FileDescription: appInfo.productName,
+        ProductName: appInfo.productName,
+        FileVersion: version,
+        ProductVersion: version,
+      },
+    )
+    vi.outputToResourceEntries(res.entries)
+  }
+
+  res.outputResource(exe)
+  await writeFile(exePath, Buffer.from(exe.generate()))
+  console.log(`after-pack: embedded icon.ico and version ${version} into ${appInfo.productFilename}.exe`)
+}
 
 /** @param context - electron-builder AfterPackContext. */
 exports.default = async context => {
@@ -16,4 +61,8 @@ exports.default = async context => {
   const destination = join(resourcesDir, 'dsh-runtime')
   await cp(staging, destination, { recursive: true, dereference: true })
   console.log(`after-pack: staged Harness runtime copied to ${destination}`)
+
+  if (context.electronPlatformName === 'win32' && process.platform !== 'win32') {
+    await embedWindowsExecutableMetadata(context)
+  }
 }

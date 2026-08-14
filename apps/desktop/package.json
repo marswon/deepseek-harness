@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
   "description": "Desktop shell for DeepSeek Harness: Electron main process supervising a local dsh web child process",
-  "version": "0.1.0-rc.6",
+  "version": "0.1.0-rc.7",
   "private": true,
   "productName": "DeepSeek Harness",
   "repository": {
@@ -36,6 +36,7 @@
   "devDependencies": {
     "electron": "^37.2.0",
     "electron-builder": "^26.0.12",
+    "resedit": "^3.0.2",
     "tsdown": "^0.22.2"
   }
 }
