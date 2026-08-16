@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-打包的桌面构建在内嵌的官方 Node.js 运行时上运行 Harness 子进程，按目标平台内嵌。`apps/desktop/scripts/stage-runtime.mjs` 钉住 `NODE_RUNTIME_VERSION`（22.21.1，满足仓库 engines `^22.19 || >=24`），下载官方 dist 归档（`NODE_DIST_MIRROR`，默认 npmmirror），只把解释器放在 `dsh-runtime/node-runtime/node`（win32 为 `node.exe`）；`runtime.ts` 的 packaged 模式改为 spawn 它，不再设置 `ELECTRON_RUN_AS_NODE`。开发模式（系统 Node 跑仓库构建）不变。
+打包的桌面构建在内嵌的官方 Node.js 运行时上运行 Harness 子进程，按目标平台内嵌。`apps/desktop/scripts/stage-runtime.mjs` 钉住 `NODE_RUNTIME_VERSION`（22.21.1，满足仓库 engines `^22.19 || >=24`），下载官方 dist 归档（`NODE_DIST_MIRROR`，默认 npmmirror），并把完整发行版放在 `dsh-runtime/node-runtime`（POSIX 为 `bin/node`，win32 为 `node.exe`）。staging、after-pack 与用户数据复制会保留 Node 的 Corepack 相对符号链接。这会保留 npm、npx 和 Corepack，使 profile 插件安装不依赖系统 Node；`runtime.ts` 的 packaged 模式 spawn 该 Node，不再设置 `ELECTRON_RUN_AS_NODE`。开发模式不变。
 
 ## Alternatives considered
 
@@ -20,4 +20,4 @@ Status: implemented
 
 ## Consequences
 
-打包运行时在各平台上的行为与仓库自己的 Node 目标完全一致，整类 Electron-Node N-API 不兼容被消除，代价是每个平台约 40 MB 的额外下载量。`stage-runtime.mjs` 按打包目标（本机或交叉）抓取运行时，解释器缺失时载荷校验会让 staging 响亮相失败。staging 从此依赖 Node dist 镜像可达。
+打包运行时在各平台上的行为与仓库自己的 Node 目标完全一致，整类 Electron-Node N-API 不兼容被消除。完整 Node 发行版比只带解释器的估计更大，但提供了产品拥有的包管理工具。旧版 pnpm deploy 会暂时把工作区变为仅 production，因此 staging 会在包脚本继续到 electron-builder 前恢复冻结的开发安装。`stage-runtime.mjs` 按打包目标（本机或交叉）抓取运行时，解释器缺失时载荷校验会让 staging 失败。staging 依赖 Node dist 镜像可达。

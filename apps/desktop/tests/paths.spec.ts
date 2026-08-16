@@ -1,4 +1,4 @@
-import { mkdtemp, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -9,6 +9,7 @@ describe('resolveDesktopPaths', () => {
     const paths = resolveDesktopPaths('/userdata')
     expect(paths.dshHome).toBe('/userdata/harness')
     expect(paths.launchRoot).toBe('/userdata/launch-root')
+    expect(paths.desktopPatchFile).toBe('/userdata/desktop.patch.yml')
     expect(paths.logFile).toBe('/userdata/logs/harness.log')
   })
 })
@@ -30,5 +31,12 @@ describe('ensureDesktopPaths', () => {
     for (const dir of [paths.dshHome, paths.launchRoot, paths.logDir]) {
       expect((await stat(dir)).isDirectory()).toBe(true)
     }
+    await expect(readFile(paths.desktopPatchFile, 'utf8')).resolves.toBe([
+      '- id: dsh-market',
+      '  config:',
+      '    profile: web',
+      '    allowRestart: false',
+      '',
+    ].join('\n'))
   })
 })

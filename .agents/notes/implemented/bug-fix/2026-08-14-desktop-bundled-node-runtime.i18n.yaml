@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-14-desktop-bundled-node-runtime.md
-2026-08-14-desktop-bundled-node-runtime.md: c2148b5e89e11639891278227c1dcb2877b12d02
-2026-08-14-desktop-bundled-node-runtime.zh.md: cab499cd5a0cd9a4cd13a70130951310b9867272
+2026-08-14-desktop-bundled-node-runtime.md: 0a044a4c3d8de063b4cbce2f14fdcbbe4c508ef6
+2026-08-14-desktop-bundled-node-runtime.zh.md: fd2dff23f38f8625e792f6c0bd9d3136ee14e761

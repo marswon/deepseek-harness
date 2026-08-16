@@ -1,7 +1,7 @@
 # Package the desktop shell for every supported platform. Runs on pull
 # requests touching apps/desktop so packaging regressions surface before
-# merge, and publishes artifacts to a GitHub Release when dispatched from a
-# v-prefixed semver tag (electron-updater rejects non-semver tags).
+# merge, and publishes artifacts to a GitHub Release from a v-prefixed semver
+# tag (electron-updater rejects non-semver tags).
 name: Desktop (dsh)
 
 on:
@@ -9,6 +9,9 @@ on:
     paths:
       - 'apps/desktop/**'
       - '.github/workflows/desktop-release.yml'
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       publish:
@@ -23,11 +26,14 @@ permissions:
 env:
   PRIMARY_NODE_VERSION: '24'
   DSH_TELEMETRY_DISABLED: '1'
+  PUBLISH_DESKTOP: ${{ github.event_name == 'push' || inputs.publish }}
 
 jobs:
   package:
     name: Package ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -65,13 +71,19 @@ jobs:
         run: pnpm run build
 
       - name: Package desktop app
+        if: ${{ !(startsWith(matrix.target, 'mac-') && env.PUBLISH_DESKTOP == 'true') }}
+        shell: ${{ startsWith(matrix.target, 'win-') && 'pwsh' || 'bash' }}
         run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.script }}
         env:
-          # Signing/notarization credentials are only present on tagged
-          # publish runs; pull-request packaging stays unsigned.
+          GH_TOKEN: ${{ env.PUBLISH_DESKTOP == 'true' && github.token || '' }}
+
+      - name: Package signed and notarized macOS app
+        if: ${{ startsWith(matrix.target, 'mac-') && env.PUBLISH_DESKTOP == 'true' }}
+        run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.script }} -- --config.mac.notarize=true
+        env:
+          GH_TOKEN: ${{ github.token }}
           CSC_LINK: ${{ secrets.MAC_CERTIFICATE_BASE64 }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-          APPLE_NOTARIZE: ${{ inputs.publish }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}

@@ -10,7 +10,7 @@ The first desktop build ([desktop shell as a supervised child-process wrapper](.
 
 ## Decision
 
-Packaged desktop builds run the Harness child under a stock Node.js runtime bundled per target platform. `apps/desktop/scripts/stage-runtime.mjs` pins `NODE_RUNTIME_VERSION` (22.21.1, satisfying the repo engines `^22.19 || >=24`), downloads the official dist archive (`NODE_DIST_MIRROR`, default npmmirror), and stages just the interpreter at `dsh-runtime/node-runtime/node` (`node.exe` on win32); `runtime.ts`'s packaged mode spawns it and no longer sets `ELECTRON_RUN_AS_NODE`. Development mode (system Node against the repo build) is unchanged.
+Packaged desktop builds run the Harness child under a stock Node.js runtime bundled per target platform. `apps/desktop/scripts/stage-runtime.mjs` pins `NODE_RUNTIME_VERSION` (22.21.1, satisfying the repo engines `^22.19 || >=24`), downloads the official dist archive (`NODE_DIST_MIRROR`, default npmmirror), and stages the complete distribution at `dsh-runtime/node-runtime` (`bin/node` on POSIX, `node.exe` on win32). The staging, after-pack, and user-data copies preserve Node's relative Corepack symlinks. This retains npm, npx, and Corepack so profile plugin installs do not require a system Node installation. `runtime.ts` spawns that Node and no longer sets `ELECTRON_RUN_AS_NODE`; development mode is unchanged.
 
 ## Alternatives considered
 
@@ -20,4 +20,4 @@ Packaged desktop builds run the Harness child under a stock Node.js runtime bund
 
 ## Consequences
 
-The packaged runtime behaves identically to the repository's own Node targets on every platform; the whole class of Electron-Node N-API incompatibilities is eliminated at ~40 MB of extra download per platform. `stage-runtime.mjs` fetches the runtime for the packaging target (host or cross), and the payload check fails the staging when the interpreter is missing. Staging now depends on the Node dist mirror being reachable.
+The packaged runtime behaves identically to the repository's own Node targets on every platform; the whole class of Electron-Node N-API incompatibilities is eliminated. The complete Node distribution increases the payload beyond the interpreter-only estimate and provides the package-manager tooling the product owns. Legacy pnpm deploy temporarily produces a production-only workspace, so staging restores the frozen development installation before package scripts continue to electron-builder. `stage-runtime.mjs` fetches the runtime for the packaging target (host or cross), and the payload check fails staging when the interpreter is missing. Staging depends on the Node dist mirror being reachable.

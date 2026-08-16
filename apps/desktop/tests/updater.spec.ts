@@ -120,7 +120,7 @@ describe('setupAutoUpdater', () => {
     expect(showMessageBox).toHaveBeenCalledWith({ message: 'This build has no update feed configured.' })
   })
 
-  it('on win32 Restart stops the child, sweeps stale installers, spawns the pending installer, then quits', async () => {
+  it('on win32 Restart stops the child, sweeps stale installers, schedules the pending installer after exit, then quits', async () => {
     stubPlatform('win32')
     const localAppData = await scratchDir()
     process.env['LOCALAPPDATA'] = localAppData
@@ -142,12 +142,15 @@ describe('setupAutoUpdater', () => {
     showMessageBox.mockResolvedValue({ response: 0 })
     handlers.get('update-downloaded')?.({ version: '0.2.0', path: 'DeepSeek-Harness-Setup-0.2.0.exe', files: [] })
     await vi.waitFor(() => { expect(order).toEqual(['prepare', 'quit']) })
-    const installerSpawn = spawn.mock.calls.find(call => String(call[0]).endsWith('DeepSeek-Harness-Setup-0.2.0.exe'))
-    expect(installerSpawn?.[1]).toEqual(['--updated', '--force-run'])
-    expect(installerSpawn?.[2]).toMatchObject({ detached: true })
-    // The stale-installer sweep ran powershell against the pending directory first.
-    const sweep = spawn.mock.calls.find(call => String(call[0]) === 'powershell.exe')
-    expect(String(sweep?.[1]?.[2])).toContain('@deepseek-aidsh-desktop-updater')
+    // The detached waiter starts the installer only after the Electron PID exits.
+    const waiter = spawn.mock.calls.find(call => String(call[0]) === 'powershell.exe'
+      && String((call[1] as string[]).at(-1)).includes('Start-Process'))
+    expect(String((waiter?.[1] as string[] | undefined)?.at(-1))).toContain('DeepSeek-Harness-Setup-0.2.0.exe')
+    expect(waiter?.[2]).toMatchObject({ detached: true, windowsHide: true })
+    // The stale-installer sweep ran against the pending directory first.
+    const sweep = spawn.mock.calls.find(call => String(call[0]) === 'powershell.exe'
+      && String((call[1] as string[]).at(-1)).includes('Get-CimInstance'))
+    expect(String((sweep?.[1] as string[] | undefined)?.at(-1))).toContain('@deepseek-aidsh-desktop-updater')
     expect(quitAndInstall).not.toHaveBeenCalled()
   })
 

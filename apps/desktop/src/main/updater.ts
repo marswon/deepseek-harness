@@ -153,6 +153,33 @@ async function killStaleInstallers(pendingDir: string): Promise<void> {
 }
 
 /**
+ * Start the NSIS installer only after this Electron process is gone. The
+ * installer cannot reliably race `app.quit()`: Windows can keep renderer and
+ * utility processes alive after the call returns, which reopens NSIS's
+ * running-application dialog. A detached PowerShell waiter has no handles
+ * inherited from the app and starts the installer after the process id exits.
+ * @param installer - absolute path of the downloaded NSIS executable.
+ * @returns whether the waiter process was spawned.
+ */
+async function spawnInstallerAfterAppExit(installer: string): Promise<boolean> {
+  const escapedInstaller = installer.replace(/'/g, "''")
+  const command = `while (Get-Process -Id ${String(process.pid)} -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 200 }; `
+    + `Start-Process -FilePath '${escapedInstaller}' -ArgumentList @('--updated', '--force-run')`
+  return await new Promise<boolean>((resolve) => {
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', command], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    child.once('error', () => { resolve(false) })
+    child.once('spawn', () => {
+      child.unref()
+      resolve(true)
+    })
+  })
+}
+
+/**
  * Hand the downloaded update to the NSIS installer: stop the Harness child,
  * clear stale installers, spawn the pending installer detached, and quit only
  * once the spawn succeeds. Falls back to quitAndInstall when the pending
@@ -169,24 +196,12 @@ async function installWindowsUpdate(info: UpdateInfo, options: UpdaterOptions): 
   if (installer !== null) {
     await killStaleInstallers(dirname(installer))
     if (existsSync(installer)) {
-      const spawned = await new Promise<boolean>((resolve) => {
-        const child = spawn(installer, ['--updated', '--force-run'], {
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: false,
-        })
-        child.once('error', () => { resolve(false) })
-        child.once('spawn', () => {
-          child.unref()
-          resolve(true)
-        })
-      })
-      if (spawned) {
-        options.log(`installer spawned: ${installer}`)
+      if (await spawnInstallerAfterAppExit(installer)) {
+        options.log(`installer scheduled after app exit: ${installer}`)
         app.quit()
         return
       }
-      options.log(`failed to spawn installer: ${installer}`)
+      options.log(`failed to schedule installer: ${installer}`)
     } else {
       options.log(`pending installer missing: ${installer}`)
     }

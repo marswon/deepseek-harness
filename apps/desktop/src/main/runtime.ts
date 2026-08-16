@@ -56,7 +56,10 @@ export function harnessBinPath(runtime: HarnessRuntime): string {
  * @returns the node-runtime binary path for the current platform.
  */
 export function bundledNodePath(runtimeDir: string): string {
-  return join(runtimeDir, 'node-runtime', process.platform === 'win32' ? 'node.exe' : 'node')
+  const nodeRuntime = join(runtimeDir, 'node-runtime')
+  return process.platform === 'win32'
+    ? join(nodeRuntime, 'node.exe')
+    : join(nodeRuntime, 'bin', 'node')
 }
 
 /** Marker file proving a staged runtime copy completed. */
@@ -100,7 +103,7 @@ export async function stagePackagedRuntime(
   await rm(target, { recursive: true, force: true })
   const staging = join(runtimeRoot, `.staging-${process.pid}`)
   await rm(staging, { recursive: true, force: true })
-  await cp(source, staging, { recursive: true, dereference: true })
+  await cp(source, staging, { recursive: true, dereference: false, verbatimSymlinks: true })
   await writeFile(join(staging, STAGING_COMPLETE), version, 'utf8')
   await rm(target, { recursive: true, force: true })
   await rename(staging, target)
@@ -139,8 +142,9 @@ export async function resolveHarnessRuntime(
 }
 
 /**
- * Assemble the Harness child invocation: `web --host 127.0.0.1 --port 0` on
- * the loopback with an OS-assigned port, `--expose-internals` so the Cordis
+ * Assemble the Harness child invocation: the desktop overlay followed by
+ * `web --host 127.0.0.1 --port 0` on the loopback with an OS-assigned port,
+ * `--expose-internals` so the Cordis
  * loader never needs the native `node-addon-require-builtin` fallback, and
  * `DSH_HOME` redirected into the desktop-owned data root.
  * @param runtime - the resolved runtime to launch from.
@@ -151,7 +155,7 @@ export async function resolveHarnessRuntime(
  */
 export function buildHarnessLaunch(runtime: HarnessRuntime, paths: DesktopPaths, baseEnv: NodeJS.ProcessEnv): HarnessLaunch {
   const env: NodeJS.ProcessEnv = { ...baseEnv, DSH_HOME: paths.dshHome }
-  const webArgs = ['web', '--host', '127.0.0.1', '--port', '0']
+  const webArgs = ['web', '--patch', paths.desktopPatchFile, '--host', '127.0.0.1', '--port', '0']
   switch (runtime.kind) {
     case 'development':
       return {
@@ -166,10 +170,14 @@ export function buildHarnessLaunch(runtime: HarnessRuntime, paths: DesktopPaths,
         command: nodeBin,
         args: ['--expose-internals', harnessBinPath(runtime), ...webArgs],
         cwd: paths.launchRoot,
-        // The bundled stock Node ships corepack/npm/npx in its bin directory;
-        // putting it on PATH lets plugins spawn them by name (dshmarket's
-        // plugin installs run `corepack enable` / `npm -g`).
-        env: { ...env, PATH: `${dirname(nodeBin)}${delimiter}${env.PATH ?? ''}` },
+        // The complete bundled Node distribution ships corepack/npm/npx in its
+        // bin directory. The marker keeps `dsh plugin` from altering a source
+        // developer's system Node installation when it enables Corepack.
+        env: {
+          ...env,
+          DSH_BUNDLED_NODE_RUNTIME: '1',
+          PATH: `${dirname(nodeBin)}${delimiter}${env.PATH ?? ''}`,
+        },
       }
     }
   }

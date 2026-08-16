@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-16-desktop-update-install-handoff.md
-2026-08-16-desktop-update-install-handoff.md: e9127a7fea846b1a56c6141e46fd19083f5b70da
-2026-08-16-desktop-update-install-handoff.zh.md: 5dee4e9ebc7b9d125bfeb01a3cec9ac76bab9373
+2026-08-16-desktop-update-install-handoff.md: ea61494209d1de91eb61bf37b2203c819d87e35a
+2026-08-16-desktop-update-install-handoff.zh.md: 7e1b89a1ea98f5a1b5ee926c08c3249c668473c5

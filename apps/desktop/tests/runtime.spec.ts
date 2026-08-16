@@ -1,6 +1,6 @@
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildHarnessLaunch, bundledNodePath, harnessBinPath, parseReadyUrl, resolveHarnessRuntime,
@@ -44,7 +44,10 @@ describe('buildHarnessLaunch', () => {
       { PATH: '/usr/bin' },
     )
     expect(launch.command).toBe('/usr/bin/node')
-    expect(launch.args).toEqual(['--expose-internals', '/repo/apps/cli/lib/bin.js', 'web', '--host', '127.0.0.1', '--port', '0'])
+    expect(launch.args).toEqual([
+      '--expose-internals', '/repo/apps/cli/lib/bin.js', 'web', '--patch', paths.desktopPatchFile,
+      '--host', '127.0.0.1', '--port', '0',
+    ])
     expect(launch.cwd).toBe(paths.launchRoot)
     expect(launch.env['DSH_HOME']).toBe(paths.dshHome)
     expect(launch.env['PATH']).toBe('/usr/bin')
@@ -58,10 +61,14 @@ describe('buildHarnessLaunch', () => {
       {},
     )
     expect(launch.command).toBe(bundledNodePath('/staged/dsh-runtime'))
-    expect(launch.command).toMatch(/node-runtime[\\/]node(\.exe)?$/)
-    expect(launch.args).toEqual(['--expose-internals', '/staged/dsh-runtime/lib/bin.js', 'web', '--host', '127.0.0.1', '--port', '0'])
+    expect(launch.command).toMatch(/node-runtime(?:[\\/]bin)?[\\/]node(\.exe)?$/)
+    expect(launch.args).toEqual([
+      '--expose-internals', '/staged/dsh-runtime/lib/bin.js', 'web', '--patch', paths.desktopPatchFile,
+      '--host', '127.0.0.1', '--port', '0',
+    ])
     expect(launch.env['ELECTRON_RUN_AS_NODE']).toBeUndefined()
     expect(launch.env['DSH_HOME']).toBe(paths.dshHome)
+    expect(launch.env['DSH_BUNDLED_NODE_RUNTIME']).toBe('1')
   })
 
   it('puts the bundled Node bin directory on PATH in packaged builds', () => {
@@ -70,9 +77,8 @@ describe('buildHarnessLaunch', () => {
       paths,
       { PATH: '/usr/bin' },
     )
-    // Plugins spawn corepack/npm/npx by name; the bundled stock Node ships
-    // them in its bin directory.
-    expect(launch.env['PATH']).toBe(`${join('/staged/dsh-runtime', 'node-runtime')}${delimiter}/usr/bin`)
+    // Plugins spawn Corepack/npm/npx by name from the complete Node distribution.
+    expect(launch.env['PATH']).toBe(`${dirname(bundledNodePath('/staged/dsh-runtime'))}${delimiter}/usr/bin`)
   })
 
   it('never mutates the caller environment', () => {
@@ -86,9 +92,12 @@ describe('buildHarnessLaunch', () => {
 async function makeBundledRuntime(root: string): Promise<string> {
   const resources = join(root, 'resources')
   await mkdir(join(resources, 'dsh-runtime/lib'), { recursive: true })
-  await mkdir(join(resources, 'dsh-runtime/node-runtime'), { recursive: true })
+  const nodePath = process.platform === 'win32'
+    ? join(resources, 'dsh-runtime/node-runtime/node.exe')
+    : join(resources, 'dsh-runtime/node-runtime/bin/node')
+  await mkdir(dirname(nodePath), { recursive: true })
   await writeFile(join(resources, 'dsh-runtime/lib/bin.js'), '// bin\n')
-  await writeFile(join(resources, 'dsh-runtime/node-runtime/node'), 'binary\n')
+  await writeFile(nodePath, 'binary\n')
   return resources
 }
 
@@ -112,6 +121,22 @@ describe('stagePackagedRuntime', () => {
     expect(staged).toBe(join(runtimeRoot, '1.0.0'))
     expect(await readFile(join(staged, 'lib/bin.js'), 'utf8')).toBe('// bin\n')
     expect(await readFile(join(staged, '.dsh-runtime-complete'), 'utf8')).toBe('1.0.0')
+  })
+
+  it.skipIf(process.platform === 'win32')('preserves bundled Node relative symlinks', async () => {
+    const root = await sandbox()
+    const resources = await makeBundledRuntime(root)
+    const runtimeRoot = join(root, 'runtimes')
+    const corepackTarget = join(resources, 'dsh-runtime/node-runtime/lib/corepack.js')
+    const corepackLink = join(resources, 'dsh-runtime/node-runtime/bin/corepack')
+    await mkdir(dirname(corepackTarget), { recursive: true })
+    await writeFile(corepackTarget, '// corepack\n')
+    await symlink('../lib/corepack.js', corepackLink)
+
+    const staged = await stagePackagedRuntime(resources, runtimeRoot, '1.0.0')
+    const stagedLink = join(staged, 'node-runtime/bin/corepack')
+    expect((await lstat(stagedLink)).isSymbolicLink()).toBe(true)
+    expect(await readlink(stagedLink)).toBe('../lib/corepack.js')
   })
 
   it('reuses a completed copy without re-copying', async () => {

@@ -59,7 +59,7 @@ exports.default = async context => {
     ? join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
     : join(context.appOutDir, 'resources')
   const destination = join(resourcesDir, 'dsh-runtime')
-  await cp(staging, destination, { recursive: true, dereference: true })
+  await cp(staging, destination, { recursive: true, dereference: false, verbatimSymlinks: true })
   console.log(`after-pack: staged Harness runtime copied to ${destination}`)
 
   if (context.electronPlatformName === 'win32' && process.platform !== 'win32') {
