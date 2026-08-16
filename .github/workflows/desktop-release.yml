@@ -13,12 +13,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      publish:
-        description: Upload artifacts to a GitHub Release. Must run from a v-prefixed semver tag.
-        required: true
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -26,7 +20,6 @@ permissions:
 env:
   PRIMARY_NODE_VERSION: '24'
   DSH_TELEMETRY_DISABLED: '1'
-  PUBLISH_DESKTOP: ${{ github.event_name == 'push' || inputs.publish }}
 
 jobs:
   package:
@@ -71,14 +64,14 @@ jobs:
         run: pnpm run build
 
       - name: Package desktop app
-        if: ${{ !(startsWith(matrix.target, 'mac-') && env.PUBLISH_DESKTOP == 'true') }}
+        if: ${{ !(startsWith(matrix.target, 'mac-') && github.event_name == 'push') }}
         shell: ${{ startsWith(matrix.target, 'win-') && 'pwsh' || 'bash' }}
         run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.script }}
         env:
-          GH_TOKEN: ${{ env.PUBLISH_DESKTOP == 'true' && github.token || '' }}
+          GH_TOKEN: ${{ github.event_name == 'push' && github.token || '' }}
 
       - name: Package signed and notarized macOS app
-        if: ${{ startsWith(matrix.target, 'mac-') && env.PUBLISH_DESKTOP == 'true' }}
+        if: ${{ startsWith(matrix.target, 'mac-') && github.event_name == 'push' }}
         run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.script }} -- --config.mac.notarize=true
         env:
           GH_TOKEN: ${{ github.token }}
