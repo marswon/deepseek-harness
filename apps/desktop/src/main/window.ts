@@ -24,7 +24,8 @@ export function createMainWindow(options: MainWindowOptions): BrowserWindow {
     minWidth: 960,
     minHeight: 600,
     show: false,
-    autoHideMenuBar: true,
+    // No autoHideMenuBar: on Windows/Linux the bar is the only place with
+    // Check for Updates / About — hiding it made the version undiscoverable.
     webPreferences: {
       preload: join(options.libDir, 'preload/index.cjs'),
       contextIsolation: true,

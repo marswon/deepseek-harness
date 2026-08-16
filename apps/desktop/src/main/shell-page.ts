@@ -20,9 +20,11 @@ function escapeHtml(text: string): string {
  * while starting, or the failure message with a log tail and recovery actions
  * (retry / view logs / quit) wired through `window.dshDesktop.shellAction`.
  * @param state - which variant to render.
+ * @param version - the desktop shell version shown in the footer (the page is
+ * the only version surface available before the Harness UI loads).
  * @returns a self-contained HTML document; no network references.
  */
-export function renderShellPage(state: ShellPageState): string {
+export function renderShellPage(state: ShellPageState, version: string): string {
   const body = state.status === 'starting'
     ? `<div class="spinner" aria-label="starting"></div>
        <p>Starting DeepSeek Harness…</p>`
@@ -50,10 +52,11 @@ export function renderShellPage(state: ShellPageState): string {
   button:hover { background: #255bc4; }
   .spinner { width: 32px; height: 32px; margin: 0 auto 16px; border: 3px solid #3a3f47; border-top-color: #2f6fed; border-radius: 50%; animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  .version { margin-top: 24px; font-size: 12px; color: #7a8190; }
 </style>
 </head>
 <body>
-<main>${body}</main>
+<main>${body}<p class="version">DeepSeek Harness ${escapeHtml(version)}</p></main>
 <script>
   document.querySelectorAll('[data-action]').forEach(button => {
     button.addEventListener('click', () => window.dshDesktop?.shellAction(button.dataset.action))

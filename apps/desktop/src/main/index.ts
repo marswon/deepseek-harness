@@ -52,7 +52,7 @@ const harness = new HarnessProcess({
 
 function showShellPage(state: Parameters<typeof renderShellPage>[0]): void {
   const window = createMainWindowOnce()
-  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderShellPage(state))}`)
+  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(renderShellPage(state, app.getVersion()))}`)
 }
 
 let mainWindow: ReturnType<typeof createMainWindow> | null = null
