@@ -77,10 +77,12 @@ async function startHarness(): Promise<void> {
     log.write(`harness ready at ${url}`)
     await createMainWindowOnce().loadURL(url)
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
     showShellPage({
       status: 'failed',
-      message: error instanceof Error ? error.message : String(error),
+      message,
       logTail: log.recentLines(),
+      canDisableMarketPlugins: process.platform === 'win32' && message.includes('3221226505'),
     })
   }
 }
