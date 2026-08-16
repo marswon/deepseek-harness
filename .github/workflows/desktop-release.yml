@@ -60,8 +60,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build Harness runtime and web UI
-        run: pnpm run build
+      - name: Build Harness runtime, web UI, and desktop main process
+        run: pnpm run build && pnpm --filter @deepseek-ai/dsh-desktop run build
 
       - name: Package Windows desktop app
         if: ${{ startsWith(matrix.target, 'win-') }}
