@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
+  IconLoadingOutline16, IconPaperclipOutline16, IconPlusOutline16, IconWarningOutline16, Toast, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { AttachmentRail, DropOverlay, ImageLightbox } from '@deepseek-ai/dsh-client-ui-attachment'
 import type { AttachmentRailItem } from '@deepseek-ai/dsh-client-ui-attachment'
@@ -23,7 +23,9 @@ import type {} from '@deepseek-ai/dsh-goal/client'
 // wire types: apiproxy's sessions contract declares it, and client-runtime's
 // api-remotes import already places it in every client program.
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ComposerAttachment, ComposerBarProps } from '../contract/slots.ts'
+import type { ComposerAttachment, ComposerBarProps, ComposerImageAttachment } from '../contract/slots.ts'
+import { isTextDraftFile } from '../draft-files.ts'
+import { officeDocumentKind } from '../draft-office.ts'
 import { deriveDecorations } from '../input/decorations.ts'
 import type { DraftDecorations } from '../input/decorations.ts'
 import {
@@ -44,7 +46,7 @@ interface ComposerRailItem extends AttachmentRailItem {
 export type InputBarProps = ComposerBarProps
 
 export function InputBar({
-  useSession, useInput, inputActions, keyboard, addImages, removeImage, draftImages,
+  useSession, useInput, inputActions, keyboard, addImages, addFiles, addDocuments, removeImage, draftImages,
   resolveSubmitMode, toggleCommandMenu, stop, command, t,
   renderSlot, useNotices, useLexicon, useMenuLauncher,
   useProjection, sessionId, variant, disabled: inert = false, blocked,
@@ -73,9 +75,13 @@ export function InputBar({
     [draftImages, input?.imageIds],
   )
   const empty = draft.trim() === '' && attachments.length === 0
-  const [preview, setPreview] = useState<ComposerAttachment | null>(null)
+  const [preview, setPreview] = useState<ComposerImageAttachment | null>(null)
   const [dragActive, setDragActive] = useState(false)
-  // Transient error banner (image-intake rejections and prompt failures): the
+  // Office documents under local extraction: pending chips beside the rail,
+  // keyed by a local seq (names can repeat across batches).
+  const [pendingDocs, setPendingDocs] = useState<readonly { seq: number; name: string }[]>([])
+  const pendingDocSeq = useRef(0)
+  // Transient error banner (attachment-intake rejections and prompt failures): the
   // seq keys the Toast so an identical repeated message restarts the
   // hold-then-fade cycle instead of silently reusing the faded one.
   const [toast, setToast] = useState<{ seq: number; text: string } | null>(null)
@@ -102,6 +108,7 @@ export function InputBar({
       : `${promptError.error.message} (${promptError.error.code})`)
   }, [promptError, showToast, t, imageLimits])
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const cardRef = useRef<HTMLDivElement | null>(null)
   const dragDepthRef = useRef(0)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -397,7 +404,7 @@ export function InputBar({
       .filter(item => item.kind === 'file')
       .map(item => item.getAsFile())
       .filter((file): file is File => file !== null)
-    if (files.length > 0) intakeImages(files)
+    if (files.length > 0) intakeFiles(files)
     const text = e.clipboardData.getData('text/plain')
     if (text === '') {
       if (files.length > 0) e.preventDefault()
@@ -437,7 +444,7 @@ export function InputBar({
         if (files.some(file => file.size > imageLimits.maxImageBytes)) {
           return t('image.fileTooLarge', { size: imageSizeText(imageLimits.maxImageBytes) })
         }
-        const total = attachments.reduce((sum, attachment) => sum + attachment.file.size, 0)
+        const total = attachments.reduce((sum, attachment) => sum + (attachment.kind === 'image' ? attachment.file.size : 0), 0)
           + files.reduce((sum, file) => sum + file.size, 0)
         if (total > imageLimits.maxMessageImageBytes) {
           return t('image.totalTooLarge', { size: imageSizeText(imageLimits.maxMessageImageBytes) })
@@ -448,8 +455,48 @@ export function InputBar({
     if (rejected !== null) showToast(rejected)
   }, [addImages, attachments, imageLimits, showToast, t])
 
+  // The one intake funnel behind the attach button, paste, and page drop:
+  // image/* files keep the image path above (limits pre-check + preview
+  // store), text files (MIME or allowlisted extension/name) become draft
+  // text files through the async addFiles face, office documents
+  // (.pdf/.docx/.xlsx/.pptx) extract locally through the async addDocuments
+  // face (pending chips show while the parsers run), and anything else is
+  // announced as unsupported without entering the rail.
+  const intakeFiles = useCallback((files: readonly File[]): void => {
+    if (files.length === 0) return
+    const images: File[] = []
+    const texts: File[] = []
+    const offices: File[] = []
+    let unsupported = false
+    for (const file of files) {
+      if (file.type.startsWith('image/')) images.push(file)
+      else if (isTextDraftFile(file)) texts.push(file)
+      else if (officeDocumentKind(file) !== null) offices.push(file)
+      else unsupported = true
+    }
+    if (images.length > 0) intakeImages(images)
+    if (texts.length > 0) {
+      void addFiles?.(texts).then((rejected) => {
+        if (rejected !== null) showToast(rejected)
+      })
+    }
+    if (offices.length > 0) {
+      const batch = offices.map((file) => {
+        pendingDocSeq.current += 1
+        return { seq: pendingDocSeq.current, name: file.name }
+      })
+      setPendingDocs(prev => [...prev, ...batch])
+      void addDocuments?.(offices).then((rejected) => {
+        const settled = new Set(batch.map(item => item.seq))
+        setPendingDocs(prev => prev.filter(item => !settled.has(item.seq)))
+        if (rejected !== null) showToast(rejected)
+      })
+    }
+    if (unsupported) showToast(t('file.unsupportedType'))
+  }, [addDocuments, addFiles, intakeImages, showToast, t])
+
   // Whole-page file-drop intake (DeepSeek Chat behavior): the listeners live
-  // on the document so a drop anywhere over the window adds images, not only
+  // on the document so a drop anywhere over the window adds attachments, not only
   // over the composer card. Safe as document-level state: the composer-bar
   // slot is `kind: 'single'`, so at most one bar is mounted to bind these.
   // Text drags carry no 'Files' type and pass through untouched, keeping the
@@ -489,7 +536,7 @@ export function InputBar({
       event.preventDefault()
       reset()
       if (!canAcceptDrop) return
-      intakeImages([...(event.dataTransfer?.files ?? [])])
+      intakeFiles([...(event.dataTransfer?.files ?? [])])
     }
     document.addEventListener('dragenter', onDragEnter)
     document.addEventListener('dragover', onDragOver)
@@ -503,19 +550,29 @@ export function InputBar({
       document.removeEventListener('drop', onDrop)
       window.removeEventListener('dragend', reset)
     }
-  }, [canAcceptDrop, intakeImages])
+  }, [canAcceptDrop, intakeFiles])
 
   const closePreview = useCallback(() => { setPreview(null) }, [])
 
-  // Rail thumbnails with their strings resolved here: the attachment atoms are
-  // zero-cordis and read no locale.
-  const railItems = useMemo<ComposerRailItem[]>(() => attachments.map(attachment => ({
-    id: attachment.id,
-    previewUrl: attachment.previewUrl,
-    alt: attachment.file.name || t('image.pending'),
-    removeLabel: t('image.remove', { name: attachment.file.name }),
-    attachment,
-  })), [attachments, t])
+  // Rail items with their strings resolved here: the attachment atoms are
+  // zero-cordis and read no locale. Images keep their thumbnail + original
+  // preview; text files render as name chips (no open affordance).
+  const railItems = useMemo<ComposerRailItem[]>(() => attachments.map(attachment => (
+    attachment.kind === 'image'
+      ? {
+        id: attachment.id,
+        previewUrl: attachment.previewUrl,
+        alt: attachment.file.name || t('image.pending'),
+        removeLabel: t('image.remove', { name: attachment.file.name }),
+        attachment,
+      }
+      : {
+        id: attachment.id,
+        alt: attachment.name,
+        removeLabel: t('file.remove', { name: attachment.name }),
+        attachment,
+      }
+  )), [attachments, t])
 
   const onSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>): void => {
     // Any caret/selection gesture ends a live paste attempt (the machine
@@ -536,6 +593,19 @@ export function InputBar({
   const onToggleCommandMenu = (): void => {
     const el = inputRef.current
     if (el !== null) toggleCommandMenu?.(selectionOf(el))
+  }
+
+  // The attach button's hidden file input: no `accept` filter — the intake
+  // funnel classifies in code so a refused file gets product copy instead of
+  // a silent picker-level filter.
+  const openFilePicker = (): void => {
+    fileInputRef.current?.click()
+  }
+  const onAttachPick = (e: ChangeEvent<HTMLInputElement>): void => {
+    const { files } = e.target
+    // Reset so re-picking the same file fires a fresh change event.
+    e.target.value = ''
+    if (files !== null && files.length > 0) intakeFiles([...files])
   }
 
   // Ordinary sessions retain their primary Send/Stop toggle. A continuable
@@ -676,16 +746,27 @@ export function InputBar({
       >
         {overlay !== undefined && <div className={css.overlayAnchor}>{overlay}</div>}
         {accessory !== undefined && <div className={css.accessory}>{accessory}</div>}
-        {railItems.length > 0 && (
+        {railItems.length > 0 || pendingDocs.length > 0 ? (
           <div className={css.attachments}>
-            <AttachmentRail
-              items={railItems}
-              labels={attachmentRailLabels(t)}
-              onOpen={(item) => { setPreview(item.attachment) }}
-              onRemove={(item) => { removeImage?.(item.attachment.id) }}
-            />
+            {railItems.length > 0 && (
+              <AttachmentRail
+                items={railItems}
+                labels={attachmentRailLabels(t)}
+                onOpen={(item) => {
+                  /* v8 ignore next -- defensive: the rail renders no open control on file chips, so only image items arrive. */
+                  if (item.attachment.kind === 'image') setPreview(item.attachment)
+                }}
+                onRemove={(item) => { removeImage?.(item.attachment.id) }}
+              />
+            )}
+            {pendingDocs.map(item => (
+              <span key={item.seq} className={css.pendingDoc} title={item.name}>
+                <IconLoadingOutline16 size={12} className={css.pendingDocSpin} />
+                {item.name}
+              </span>
+            ))}
           </div>
-        )}
+        ) : null}
         {/* One scrollport, two text layers. The hidden mirror renders draft+'\n' and stretches the
             stack to the draft's FULL height (counting rows by '\n' cannot see soft wraps); the
             absolutely-positioned backdrop and textarea ride that height, and .scroll — capped at 14
@@ -745,6 +826,26 @@ export function InputBar({
                 <IconPlusOutline16 size={14} />
               </button>
             </Tooltip>
+            <Tooltip label={t('input.attach')} side="top" delayMs={500}>
+              <button
+                type="button"
+                className={css.add}
+                aria-label={t('input.attach')}
+                disabled={locked || machineBusy}
+                onMouseDown={keepFocus}
+                onClick={openFilePicker}
+              >
+                <IconPaperclipOutline16 size={14} />
+              </button>
+            </Tooltip>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              hidden
+              data-attach-input
+              onChange={onAttachPick}
+            />
             <div className={css.modes}>
               {accessSelect}
               {renderSlot('conversation.input.plan', { locked })}

@@ -1,44 +1,49 @@
-# DeepSeek Harness
+# DeepSeek Harness Desktop
 
 English | [中文](README.zh.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+<img src="apps/desktop/build/icon.png" width="96" alt="DeepSeek Harness icon">
 
-It uses an architecture where **everything is a plugin**, and is powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://github.com/cordiverse/paper).
+**DeepSeek Harness Desktop** is the desktop app for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), the open-source agent harness from DeepSeek AI. One installer gives you the full agent workspace — no Node.js, no terminal setup.
 
-## Developer preview
+## Download
 
-DeepSeek Harness is currently in _developer preview_ and is iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+Get the latest build from [Releases](https://github.com/marswon/deepseek-harness/releases/latest):
 
-## Run
+| Platform | File | Notes |
+|---|---|---|
+| macOS (Apple Silicon) | `DeepSeek-Harness-*-arm64.dmg` | Not signed yet — right-click → **Open** on first launch |
+| Windows 10/11 (installer) | `DeepSeek-Harness-Setup-*.exe` | Per-user install, no administrator rights needed |
+| Windows 10/11 (portable) | `DeepSeek-Harness-*.exe` | Single file, run from anywhere |
 
-### Run from `npm`
+After install, the app downloads updates in the background and applies them on restart.
 
-Install `Node.js`, then run:
+## Screenshots
 
-```sh
-npx @deepseek-ai/dsh web
-```
+![First-run setup wizard](assets/screenshot-onboarding.png)
 
-The command starts the Web UI, served at `http://127.0.0.1:3080` by default. See [Web UI guide](docs/user/guide/index.md).
+![Main window](assets/screenshot-main.png)
 
-### Run from source
+![Model provider settings](assets/screenshot-models.png)
 
-To run from a repository checkout:
+## Features
 
-```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
-pnpm install
-pnpm run build
-pnpm dsh web
-```
+- **Ready out of the box** — the runtime and web UI ship inside the installer; install and start a session, nothing else to set up.
+- **Guided first run** — a setup wizard walks you through getting a DeepSeek API key, pasting it in, and verifying it before your first session.
+- **Plugin marketplace** — browse and install community plugins from **Settings → Plugin Market**, powered by [dshmarket](https://github.com/dsh-market/dsh-market).
+- **Workspace at hand** — jump straight to a workspace folder, or reveal any file the agent generated in Finder/Explorer directly from the session.
+- **File attachments** — attach code and text files inline, or drop in PDF, Word, Excel, and PowerPoint documents; the app extracts their text locally before sending.
+- **Automatic updates** — new versions download in the background and install on restart.
 
-## Community and support
+## Security notes
 
-- Feel free to submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/Ycq5dCaS4">DeepSeek Harness Discord community</a>.
+- macOS builds are not yet signed with an Apple Developer certificate, so Gatekeeper warns on first launch; right-click the app and choose **Open**.
+- Windows builds install per user and never ask for administrator rights.
+- Marketplace plugins are third-party code running with the agent's permissions; install only plugins you trust.
+
+## Relationship to upstream
+
+This repository forks [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) and adds the desktop shell (`apps/desktop`), the onboarding wizard, and the bundled plugin market. The harness core tracks upstream. See [docs/architecture.md](docs/architecture.md) for the architecture and [AGENTS.md](AGENTS.md) for contributor guidance.
 
 ## Contributing
 
@@ -46,9 +51,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Development
 
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
-
-For agents, follow [AGENTS.md](AGENTS.md).
+Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md). For agents, follow [AGENTS.md](AGENTS.md).
 
 ## License
 

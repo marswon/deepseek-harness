@@ -131,6 +131,39 @@
   padding: 4px 12px 0;
 }
 
+/* Office documents under local extraction: a dashed chip with a spinner,
+   replaced by the rail's file chip when the draft lands. */
+.pendingDoc {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  height: 32px;
+  padding: 0 12px;
+  overflow: hidden;
+  border: 1px dashed var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: 16px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pendingDocSpin {
+  flex: none;
+  animation: pending-doc-spin 1s linear infinite;
+}
+
+@keyframes pending-doc-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pendingDocSpin {
+    animation: none;
+  }
+}
+
 /* Floating overlay anchor (menu / popupSelect shell): entries position
    themselves against the card (bottom: 100% + gap); closed entries render null. */
 .overlayAnchor {

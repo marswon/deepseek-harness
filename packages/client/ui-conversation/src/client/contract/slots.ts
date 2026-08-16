@@ -22,13 +22,28 @@ import type { ComposerSubmitGesture, InputSubmitMode } from './composer-submissi
 import type { ChatNode, ChatNodeKind } from './chat-nodes.ts'
 import type { CallId, SelectionTarget, ViewTab } from './views.ts'
 
-/** Browser-owned image that has not crossed the durable host boundary. */
-export interface ComposerAttachment {
+/** Browser-owned draft image that has not crossed the durable host boundary. */
+export interface ComposerImageAttachment {
   kind: 'image'
   id: DraftAttachmentId
   file: File
   previewUrl: string
 }
+
+/** Browser-owned draft text file; the full content rides the draft in memory. */
+export interface ComposerFileAttachment {
+  kind: 'file'
+  id: DraftAttachmentId
+  name: string
+  text: string
+}
+
+/**
+ * One unsent composer attachment held by ConversationController's draft
+ * registry; only its id enters input state. Images carry the File and a
+ * preview URL; text files carry their full content for prompt folding.
+ */
+export type ComposerAttachment = ComposerImageAttachment | ComposerFileAttachment
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -500,9 +515,20 @@ export interface ComposerBarInjected {
   keyboard: ComposerKeyboard | undefined
   /** Create previews and append image ids to the session input. */
   addImages: ((files: readonly File[]) => string | null) | undefined
+  /**
+   * Create text-file drafts (full content read into the registry) and append
+   * their ids to the session input; resolves to the rejection copy or null.
+   */
+  addFiles: ((files: readonly File[]) => Promise<string | null>) | undefined
+  /**
+   * Create office-document drafts (text extracted locally in the browser) and
+   * append their ids to the session input; resolves to the rejection copy or
+   * null. Extraction can take seconds — callers show a pending affordance.
+   */
+  addDocuments: ((files: readonly File[]) => Promise<string | null>) | undefined
   /** Release one preview and remove its id from session input. */
   removeImage: ((id: DraftAttachmentId) => void) | undefined
-  /** Resolve ordered input ids to browser-owned draft images. */
+  /** Resolve ordered input ids to browser-owned draft attachments. */
   draftImages: ((ids: readonly DraftAttachmentId[]) => readonly ComposerAttachment[]) | undefined
   /** Resolve one keyboard submission gesture against the current running state and persisted preference. */
   resolveSubmitMode: (

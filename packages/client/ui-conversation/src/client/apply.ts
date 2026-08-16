@@ -19,7 +19,9 @@ import type {
 } from './contract/slots.ts'
 import type { InputNotice } from './input/contract.ts'
 import { createChatStore } from './stores.ts'
-import { ConversationController, UnsupportedImageMediaTypeError } from './service.ts'
+import { ConversationController, DraftFileReadError, DraftFileTooLargeError, UnsupportedImageMediaTypeError } from './service.ts'
+import { DocumentParseError } from './draft-office.ts'
+import { fileSizeText } from './draft-files.ts'
 import type { IConversation } from './service.ts'
 import { ComposerBlockRegistry } from './input/blocks.ts'
 import type { ComposerBlock } from './input/blocks.ts'
@@ -292,6 +294,8 @@ export function apply(ctx: Context): void {
         return {
           keyboard: undefined,
           addImages: undefined,
+          addFiles: undefined,
+          addDocuments: undefined,
           removeImage: undefined,
           draftImages: undefined,
           resolveSubmitMode: (running, gesture, steeringAvailable) =>
@@ -320,6 +324,36 @@ export function apply(ctx: Context): void {
               // and naming it beats echoing the rejected MIME type back.
               return t('image.unsupportedType')
             }
+            return error instanceof Error ? error.message : String(error)
+          }
+        },
+        addFiles: async (files) => {
+          try {
+            const drafts = await conversation.createDraftFiles(files)
+            if (!shell.addImages(drafts.map(draft => draft.id))) {
+              conversation.releaseDraftImages(drafts)
+            }
+            return null
+          } catch (error: unknown) {
+            if (error instanceof DraftFileTooLargeError) {
+              return t('file.tooLarge', { size: fileSizeText(error.maxBytes) })
+            }
+            if (error instanceof DraftFileReadError) return t('file.readFailed')
+            return error instanceof Error ? error.message : String(error)
+          }
+        },
+        addDocuments: async (files) => {
+          try {
+            const drafts = await conversation.createDraftDocuments(files, t('file.truncated'))
+            if (!shell.addImages(drafts.map(draft => draft.id))) {
+              conversation.releaseDraftImages(drafts)
+            }
+            return null
+          } catch (error: unknown) {
+            if (error instanceof DraftFileTooLargeError) {
+              return t('file.tooLarge', { size: fileSizeText(error.maxBytes) })
+            }
+            if (error instanceof DocumentParseError) return t('file.parseFailed')
             return error instanceof Error ? error.message : String(error)
           }
         },

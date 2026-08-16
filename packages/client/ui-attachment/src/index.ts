@@ -1,6 +1,7 @@
 /**
- * Pure React attachment atoms (zero cordis): the composer draft-image rail,
- * the chat-history image gallery, the original-image lightbox, and the
+ * Pure React attachment atoms (zero cordis): the composer draft-attachment
+ * rail (image thumbnails and text-file name chips), the chat-history image
+ * gallery, the original-image lightbox, and the
  * full-page drop overlay. Owners resolve every string through their own
  * locale namespace and pass it down; nothing here reads application state.
  * @module @deepseek-ai/dsh-client-ui-attachment

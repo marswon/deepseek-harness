@@ -200,6 +200,8 @@ function mount(
           inputActions={inputActions}
           keyboard={wiring}
           addImages={() => null}
+          addFiles={() => Promise.resolve(null)}
+          addDocuments={() => Promise.resolve(null)}
           removeImage={() => {}}
           draftImages={() => []}
           resolveSubmitMode={() => 'queue'}

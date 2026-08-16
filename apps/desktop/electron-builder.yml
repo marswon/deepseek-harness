@@ -8,6 +8,12 @@ directories:
 files:
   - lib/**
   - package.json
+  # js-yaml is a runtime dependency of electron-updater, but the workspace
+  # root also depends on it and electron-builder's collector refuses the
+  # duplicate ("cannot find path for dependency"). Copy it verbatim instead:
+  # from points at the root install (a pnpm symlink the copier dereferences).
+  - from: ../../node_modules/js-yaml
+    to: node_modules/js-yaml
 # The staged Harness runtime is copied by scripts/after-pack.cjs — the
 # extraResources file matcher excludes node_modules even with an explicit
 # filter, and the runtime IS a node_modules tree. Staging lives in the OS

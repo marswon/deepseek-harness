@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
@@ -77,6 +78,39 @@ const BOOT_GRAMMAR_FILES: readonly string[] = [
 const FONT_EXTENSIONS: readonly string[] = ['.woff2', '.woff', '.ttf']
 
 /**
+ * Prebuilt office-parser bundles emitted verbatim at stable dist paths. The
+ * composer's office-document intake (ui-conversation draft-office.ts) loads
+ * them as classic scripts on first use — plugin bundles are single-file CJS
+ * with every dependency inlined, so this is the only route that keeps the
+ * parsers out of the initial load. Classic scripts (not ESM import()) because
+ * the desktop shell serves dist over file://, where module loading is
+ * unavailable. The sources are ui-conversation's own parser dependencies,
+ * resolved through its node_modules so the version pinned there is the one
+ * shipped.
+ */
+const OFFICE_PARSER_SOURCES: Readonly<Record<string, string>> = {
+  'pdf.min.js': 'pdfjs-dist/build/pdf.min.js',
+  'pdf.worker.min.js': 'pdfjs-dist/build/pdf.worker.min.js',
+  'mammoth.browser.min.js': 'mammoth/mammoth.browser.min.js',
+  'jszip.min.js': 'jszip/dist/jszip.min.js',
+  'xlsx.js': 'xlsx/xlsx.js',
+}
+
+/** Emit the office-parser bundles as unparsed dist assets under office-parsers/. */
+function officeParserAssets(): Plugin {
+  return {
+    name: 'dsh-office-parser-assets',
+    apply: 'build',
+    generateBundle() {
+      for (const [out, rel] of Object.entries(OFFICE_PARSER_SOURCES)) {
+        const file = src(`../../packages/client/ui-conversation/node_modules/${rel}`)
+        this.emitFile({ type: 'asset', fileName: `office-parsers/${out}`, source: readFileSync(file) })
+      }
+    },
+  }
+}
+
+/**
  * npm package name of a resolved module id: the segment after the last
  * `node_modules/`. pnpm nests the real package under an inner node_modules.
  */
@@ -90,7 +124,7 @@ function npmPackageOf(id: string): string | undefined {
 }
 
 export default defineConfig({
-  plugins: [rejectStandaloneServe(), react()],
+  plugins: [rejectStandaloneServe(), officeParserAssets(), react()],
   build: {
     sourcemap: true,
     rollupOptions: {

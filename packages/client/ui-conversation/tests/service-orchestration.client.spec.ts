@@ -10,8 +10,20 @@ import { makeTranslate, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-run
 import type { QueuedMessage, SessionFace } from '@deepseek-ai/dsh-client-runtime/client'
 import { ComposerBlockRegistry } from '../src/client/input/blocks.ts'
 import { InputHub } from '../src/client/input/hub.ts'
-import { ConversationController, UnsupportedImageMediaTypeError } from '../src/client/service.ts'
+import {
+  ConversationController, DraftFileReadError, DraftFileTooLargeError, UnsupportedImageMediaTypeError,
+} from '../src/client/service.ts'
+import { DocumentParseError, MAX_EXTRACTED_TEXT_BYTES } from '../src/client/draft-office.ts'
+import { extractDocumentText } from '../src/client/draft-office.ts'
 import { zh } from '../src/client/locales.ts'
+
+// The parser-bundle script loading is browser runtime wiring (covered by the
+// extractor spec through the libraries' Node entries); here the extraction
+// itself is stubbed so the registry/cap/truncation choreography is pinned.
+vi.mock('../src/client/draft-office.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/client/draft-office.ts')>()
+  return { ...actual, extractDocumentText: vi.fn(async (file: File) => `提取自 ${file.name}`) }
+})
 
 async function bench(readAttachment?: SessionFace['readAttachment']) {
   const runtime = await SlotTestRuntime.create()
@@ -143,6 +155,137 @@ describe('ConversationController', () => {
     }).await()
     const orphan = bare.get('conversation') as ConversationController
     await expect(orphan.send('x')).rejects.toThrow(/sessions service unavailable/)
+  })
+})
+
+describe('ConversationController draft text files', () => {
+  it('creates draft files, resolves them, and folds them ahead of the typed text', async () => {
+    const b = await bench()
+    const session = b.runtime.sessions.binding('s1')!.session
+    const drafts = await b.root.createDraftFiles([
+      new File(['文件内容'], 'a.md', { type: 'text/markdown' }),
+      new File(['second'], 'b.txt', { type: 'text/plain' }),
+    ])
+    expect(b.root.draftImages(drafts.map(draft => draft.id))).toEqual(drafts)
+    await b.root.sendSession(session, '用户文本', drafts.map(draft => draft.id), 'queue')
+    expect(b.prompt).toHaveBeenCalledWith([{
+      type: 'text',
+      text: '文件 a.md 的内容：\n```\n文件内容\n```\n\n文件 b.txt 的内容：\n```\nsecond\n```\n\n用户文本',
+    }], 'queue')
+    // A successful send releases the drafts.
+    expect(b.root.draftImages(drafts.map(draft => draft.id))).toEqual([])
+    await b.runtime.dispose()
+  })
+
+  it('sends a files-only prompt as the file blocks alone', async () => {
+    const b = await bench()
+    const session = b.runtime.sessions.binding('s1')!.session
+    const drafts = await b.root.createDraftFiles([new File(['内容'], 'only.md', { type: 'text/markdown' })])
+    await b.root.sendSession(session, '', drafts.map(draft => draft.id), 'queue')
+    expect(b.prompt).toHaveBeenCalledWith([
+      { type: 'text', text: '文件 only.md 的内容：\n```\n内容\n```\n\n' },
+    ], 'queue')
+    await b.runtime.dispose()
+  })
+
+  it('keeps image parts first and folds file blocks before the typed text', async () => {
+    const b = await bench()
+    const created = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:draft-img')
+    try {
+      const session = b.runtime.sessions.binding('s1')!.session
+      const [image] = b.root.createDraftImages([new File([Uint8Array.of(1)], 'a.png', { type: 'image/png' })])
+      const [file] = await b.root.createDraftFiles([new File(['正文'], 'notes.md', { type: 'text/markdown' })])
+      if (image === undefined || file === undefined) throw new Error('draft attachment missing')
+      await b.root.sendSession(session, '看看', [image.id, file.id], 'steer')
+      expect(b.prompt).toHaveBeenCalledWith([
+        { type: 'image', mediaType: 'image/png', data: 'AQ==', name: 'a.png' },
+        { type: 'text', text: '文件 notes.md 的内容：\n```\n正文\n```\n\n看看' },
+      ], 'steer')
+    } finally {
+      created.mockRestore()
+    }
+    await b.runtime.dispose()
+  })
+
+  it('refuses a file over the byte cap before any read starts', async () => {
+    const b = await bench()
+    const big = new File([new ArrayBuffer(256 * 1024 + 1)], 'big.txt', { type: 'text/plain' })
+    const read = vi.spyOn(big, 'text')
+    await expect(b.root.createDraftFiles([big])).rejects.toThrow(DraftFileTooLargeError)
+    expect(read).not.toHaveBeenCalled()
+    await b.runtime.dispose()
+  })
+
+  it('wraps a content read failure', async () => {
+    const b = await bench()
+    const good = new File(['ok'], 'good.txt', { type: 'text/plain' })
+    const broken = new File(['x'], 'broken.txt', { type: 'text/plain' })
+    vi.spyOn(broken, 'text').mockRejectedValue(new Error('nope'))
+    const error = await b.root.createDraftFiles([good, broken]).then(() => null, (e: unknown) => e)
+    expect(error).toBeInstanceOf(DraftFileReadError)
+    expect((error as DraftFileReadError).fileName).toBe('broken.txt')
+    await b.runtime.dispose()
+  })
+
+  it('releases a file draft without touching preview URLs', async () => {
+    const b = await bench()
+    const revoked = vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined)
+    try {
+      const [draft] = await b.root.createDraftFiles([new File(['x'], 'a.txt', { type: 'text/plain' })])
+      if (draft === undefined) throw new Error('draft attachment missing')
+      b.root.releaseDraftImage(draft.id)
+      expect(b.root.draftImages([draft.id])).toEqual([])
+      expect(revoked).not.toHaveBeenCalled()
+    } finally {
+      revoked.mockRestore()
+    }
+    await b.runtime.dispose()
+  })
+})
+
+describe('ConversationController draft office documents', () => {
+  it('extracts locally, registers, and folds like a text file', async () => {
+    const b = await bench()
+    const session = b.runtime.sessions.binding('s1')!.session
+    const drafts = await b.root.createDraftDocuments([new File(['%PDF-1.4'], '报告.pdf')], '内容过长已截断')
+    expect(vi.mocked(extractDocumentText)).toHaveBeenCalledWith(expect.any(File), 'pdf')
+    await b.root.sendSession(session, '', drafts.map(draft => draft.id), 'queue')
+    expect(b.prompt).toHaveBeenCalledWith([
+      { type: 'text', text: '文件 报告.pdf 的内容：\n```\n提取自 报告.pdf\n```\n\n' },
+    ], 'queue')
+    await b.runtime.dispose()
+  })
+
+  it('truncates over-long extracted text at the byte cap and appends the note', async () => {
+    // 70k CJK chars = 210KB of UTF-8, over the 200KB budget.
+    vi.mocked(extractDocumentText).mockResolvedValueOnce('字'.repeat(70_000))
+    const b = await bench()
+    const [draft] = await b.root.createDraftDocuments([new File(['x'], 'big.pdf')], '内容过长已截断')
+    if (draft?.kind !== 'file') throw new Error('draft attachment missing')
+    expect(draft.text.endsWith('\n\n内容过长已截断')).toBe(true)
+    expect(new TextEncoder().encode(draft.text).length)
+      .toBeLessThanOrEqual(MAX_EXTRACTED_TEXT_BYTES + '\n\n内容过长已截断'.length * 3)
+    await b.runtime.dispose()
+  })
+
+  it('refuses an office file over the 10MB cap before extraction runs', async () => {
+    const mocked = vi.mocked(extractDocumentText)
+    mocked.mockClear()
+    const b = await bench()
+    const big = new File([new ArrayBuffer(10 * 1024 * 1024 + 1)], 'huge.pdf')
+    const error = await b.root.createDraftDocuments([big], 'x').then(() => null, (e: unknown) => e)
+    expect(error).toBeInstanceOf(DraftFileTooLargeError)
+    expect((error as DraftFileTooLargeError).maxBytes).toBe(10 * 1024 * 1024)
+    expect(mocked).not.toHaveBeenCalled()
+    await b.runtime.dispose()
+  })
+
+  it('propagates extraction failures as DocumentParseError', async () => {
+    vi.mocked(extractDocumentText).mockRejectedValueOnce(new DocumentParseError('broken.pdf', 'pdf'))
+    const b = await bench()
+    await expect(b.root.createDraftDocuments([new File(['x'], 'broken.pdf')], 'x'))
+      .rejects.toThrow(DocumentParseError)
+    await b.runtime.dispose()
   })
 })
 

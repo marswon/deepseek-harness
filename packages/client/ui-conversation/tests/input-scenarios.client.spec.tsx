@@ -137,6 +137,8 @@ async function scopedBench(register?: (inputTriggers: InputTriggerService) => vo
     inputActions: shell.actions,
     keyboard: shell,
     addImages: () => null,
+    addFiles: () => Promise.resolve(null),
+    addDocuments: () => Promise.resolve(null),
     removeImage: () => {},
     draftImages: () => [],
     resolveSubmitMode: () => 'queue',

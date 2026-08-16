@@ -112,13 +112,19 @@ export function resolveProfileDir(name: string, home: string = resolveDshHome())
 
 /** The shipped profile templates auto-initialized on first use, by name. */
 export const PROFILE_TEMPLATES: Record<string, readonly string[]> = {
-  web: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
+  // dshmarket is the community plugin marketplace (settings → 插件市场); it
+  // ships in the web template so every profile gets discovery+install out of
+  // the box, and the dsh CLI package depends on it so the two-anchored bundle
+  // resolution finds it in the installation.
+  web: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dshmarket'],
   headless: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'],
 }
 
 /** Installation-owned bundle tuples normalized to the shipped template. */
 const INSTALLATION_OWNED_PROFILE_TUPLES: Record<string, readonly string[]> = {
   headless: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless'],
+  // Profiles initialized before dshmarket joined the web template.
+  web: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
 }
 
 /** The bundle list a `dsh plugin` init uses for a name with no shipped template. */

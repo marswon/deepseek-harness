@@ -10,9 +10,10 @@ Desktop shell for DeepSeek Harness: an Electron main process that supervises a l
 Electron main (apps/desktop)
 ├── userData/                     desktop-owned data root (survives upgrades)
 │   ├── harness/                  $DSH_HOME: profiles, sessions, settings, credentials
+│   ├── runtimes/<version>/       staged dsh-runtime copy (kept out of the install dir)
 │   ├── launch-root/              default project directory (no startup prompt)
 │   └── logs/harness.log          child stdout/stderr
-├── Harness child process         node|Electron-as-Node running `dsh web --host 127.0.0.1 --port 0`
+├── Harness child process         bundled stock Node running `dsh web --host 127.0.0.1 --port 0`
 │   └── ready line on stdout →    `dsh web: http://127.0.0.1:<port>`
 └── BrowserWindow                 contextIsolation + sandbox, loopback-only navigation
      └── http://127.0.0.1:<port>  Harness web UI
@@ -21,6 +22,7 @@ Electron main (apps/desktop)
 - Development spawns the system Node against the repository build (`apps/cli/lib/bin.js`); packaged builds stage the bundled runtime closure (including the per-platform stock Node.js at `dsh-runtime/node-runtime`) into the desktop data root (`runtimes/<version>`) on first launch and run the copy from there, so the install directory never hosts a running process (Windows locks a running executable's directory, which broke NSIS updates). Both pass `--expose-internals` so the Cordis loader never needs the native `node-addon-require-builtin` fallback. The Electron binary is not reused as Node: Electron's V8 sandbox makes N-API raw-memory views fatal (`koffi.view` in the win32 dialog worker).
 - node-pty ships N-API prebuilds, which are ABI-stable across Node 22/24; no native rebuild is needed at packaging time (`npmRebuild: false`).
 - Only loopback HTTP and local shell pages may load in the window; other http(s) targets open in the system browser. The renderer never gets Node access.
+- The web profile ships [dshmarket](https://github.com/dsh-market/dsh-market) (Settings → 插件市场): the community plugin marketplace from the awesome-dsh-plugin registry — one-click install/update/remove, no CLI. Plugins are third-party code; the market only installs sources on the awesome list and never runs their build scripts by default.
 
 ## Commands
 

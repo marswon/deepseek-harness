@@ -14,7 +14,12 @@ import type { Context } from '@deepseek-ai/cordis'
 // method) instead of the standalone helper.
 import type { ISessions, SessionFace, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ImageAttachmentRef, ImageMediaType } from '@deepseek-ai/dsh-attachment'
-import type { ComposerAttachment } from './contract/slots.ts'
+import type { ComposerAttachment, ComposerImageAttachment } from './contract/slots.ts'
+import { foldDraftFileBlocks, MAX_DRAFT_FILE_BYTES } from './draft-files.ts'
+import {
+  DocumentParseError, extractDocumentText, MAX_DRAFT_DOCUMENT_BYTES, MAX_EXTRACTED_TEXT_BYTES,
+  officeDocumentKind, truncateUtf8,
+} from './draft-office.ts'
 import type { QueueAction, QueueItemId } from './contract/queue.ts'
 import type { ComposerBlocks } from './input/blocks.ts'
 import type { DraftAttachmentId, SessionInputResolver } from './input/contract.ts'
@@ -58,8 +63,8 @@ export interface IConversation {
   loadOlder(): Promise<void>
 }
 
-/** Create one browser-only draft descriptor; only its id enters input state. */
-function browserDraftAttachment(file: File): ComposerAttachment {
+/** Create one browser-only draft image descriptor; only its id enters input state. */
+function browserDraftAttachment(file: File): ComposerImageAttachment {
   return {
     kind: 'image',
     id: crypto.randomUUID() as DraftAttachmentId,
@@ -84,6 +89,41 @@ export class UnsupportedImageMediaTypeError extends Error {
     super(`unsupported image media type: ${mediaType || '(empty)'}`)
     this.name = 'UnsupportedImageMediaTypeError'
     this.mediaType = mediaType
+  }
+}
+
+/** Draft file over its single-file byte cap, localized by the UI boundary. */
+export class DraftFileTooLargeError extends Error {
+  /** Offending file's display name. */
+  readonly fileName: string
+  /** The cap the file exceeded, in bytes. */
+  readonly maxBytes: number
+
+  /**
+   * @param fileName - offending file's display name.
+   * @param maxBytes - the cap the file exceeded, in bytes.
+   */
+  constructor(fileName: string, maxBytes: number) {
+    super(`draft file too large (max ${maxBytes} bytes): ${fileName}`)
+    this.name = 'DraftFileTooLargeError'
+    this.fileName = fileName
+    this.maxBytes = maxBytes
+  }
+}
+
+/** Draft text file whose content read failed, localized by the UI boundary. */
+export class DraftFileReadError extends Error {
+  /** Offending file's display name. */
+  readonly fileName: string
+
+  /**
+   * @param fileName - offending file's display name.
+   * @param options - carries the underlying read failure as `cause`.
+   */
+  constructor(fileName: string, options?: { cause: unknown }) {
+    super(`failed to read draft file: ${fileName}`, options)
+    this.name = 'DraftFileReadError'
+    this.fileName = fileName
   }
 }
 
@@ -133,7 +173,9 @@ export class ConversationController extends Service implements IConversation {
   }
 
   /**
-   * Submit ordered draft images with text through one host admission.
+   * Submit ordered draft attachments with text through one host admission.
+   * Text files fold into the text part ahead of the typed draft (one fenced
+   * block per file); images keep their leading base64 parts.
    * @param session - target session.
    * @param text - serialized prompt text.
    * @param imageIds - ordered draft-local attachment ids.
@@ -149,8 +191,15 @@ export class ConversationController extends Service implements IConversation {
     if (attachments.length !== imageIds.length) {
       throw new Error('conversation.sendSession: one or more draft images are no longer available')
     }
-    const uploaded = await this.serializeImages(attachments.map(attachment => attachment.file))
-    const content = [...uploaded, ...(text === '' ? [] : [{ type: 'text' as const, text }])]
+    const images: ComposerImageAttachment[] = []
+    const files: { name: string; text: string }[] = []
+    for (const attachment of attachments) {
+      if (attachment.kind === 'image') images.push(attachment)
+      else files.push(attachment)
+    }
+    const uploaded = await this.serializeImages(images.map(attachment => attachment.file))
+    const folded = foldDraftFileBlocks(files) + text
+    const content = [...uploaded, ...(folded === '' ? [] : [{ type: 'text' as const, text: folded }])]
     const result = await session.prompt(content, mode)
     if (!result.ok) throw new Error(`conversation.send failed: ${result.error.code}: ${result.error.message}`)
     this.releaseDraftImages(attachments)
@@ -172,7 +221,57 @@ export class ConversationController extends Service implements IConversation {
   }
 
   /**
-   * Resolve ordered input-state ids to runtime-owned draft images.
+   * Create runtime-only draft text files with their full content read into
+   * the registry. Every size is validated before any read starts, and the
+   * registry changes only once every read succeeded.
+   * @param files - browser files pre-classified as text by the intake funnel.
+   * @returns ordered draft descriptors.
+   */
+  async createDraftFiles(files: readonly File[]): Promise<readonly ComposerAttachment[]> {
+    for (const file of files) {
+      if (file.size > MAX_DRAFT_FILE_BYTES) throw new DraftFileTooLargeError(file.name, MAX_DRAFT_FILE_BYTES)
+    }
+    const drafts = await Promise.all(files.map(async (file): Promise<ComposerAttachment> => ({
+      kind: 'file',
+      id: crypto.randomUUID() as DraftAttachmentId,
+      name: file.name,
+      text: await readDraftFileText(file),
+    })))
+    for (const draft of drafts) this.draftAttachments.set(draft.id, draft)
+    return drafts
+  }
+
+  /**
+   * Create runtime-only draft office documents: bytes are parsed locally in
+   * the browser (the parser bundles load on first use, never eagerly), the
+   * extracted text is truncated at the byte cap with the visible note
+   * appended, and the registry changes only once every file succeeded.
+   * @param files - browser files pre-classified as office documents.
+   * @param truncatedNote - the localized note appended to truncated content.
+   * @returns ordered draft descriptors.
+   */
+  async createDraftDocuments(files: readonly File[], truncatedNote: string): Promise<readonly ComposerAttachment[]> {
+    for (const file of files) {
+      if (file.size > MAX_DRAFT_DOCUMENT_BYTES) throw new DraftFileTooLargeError(file.name, MAX_DRAFT_DOCUMENT_BYTES)
+    }
+    const drafts = await Promise.all(files.map(async (file): Promise<ComposerAttachment> => {
+      const kind = officeDocumentKind(file)
+      if (kind === null) throw new DocumentParseError(file.name, null)
+      const extracted = await extractDocumentText(file, kind)
+      const clipped = truncateUtf8(extracted, MAX_EXTRACTED_TEXT_BYTES)
+      return {
+        kind: 'file',
+        id: crypto.randomUUID() as DraftAttachmentId,
+        name: file.name,
+        text: clipped.truncated ? `${clipped.text}\n\n${truncatedNote}` : clipped.text,
+      }
+    }))
+    for (const draft of drafts) this.draftAttachments.set(draft.id, draft)
+    return drafts
+  }
+
+  /**
+   * Resolve ordered input-state ids to runtime-owned draft attachments.
    * @param ids - draft attachment ids.
    * @returns descriptors that remain live, in requested order.
    */
@@ -186,19 +285,21 @@ export class ConversationController extends Service implements IConversation {
   }
 
   /**
-   * Release one browser-owned draft image and preview URL.
+   * Release one browser-owned draft attachment (and its preview URL for images).
    * @param id - draft attachment id.
    */
   releaseDraftImage(id: DraftAttachmentId): void {
     const attachment = this.draftAttachments.get(id)
     if (attachment === undefined) return
     this.draftAttachments.delete(id)
-    this.createdImageUrls.delete(attachment.previewUrl)
-    revokePreview(attachment.previewUrl)
+    if (attachment.kind === 'image') {
+      this.createdImageUrls.delete(attachment.previewUrl)
+      revokePreview(attachment.previewUrl)
+    }
   }
 
   /**
-   * Release a set of browser-owned draft images.
+   * Release a set of browser-owned draft attachments.
    * @param attachments - descriptors to release.
    */
   releaseDraftImages(attachments: readonly ComposerAttachment[]): void {
@@ -320,6 +421,15 @@ export class ConversationController extends Service implements IConversation {
       data: bytesToBase64(new Uint8Array(await file.arrayBuffer())),
       ...(file.name === '' ? {} : { name: file.name }),
     })))
+  }
+}
+
+/** Read one draft file's full text, wrapping any read failure for locale mapping. */
+async function readDraftFileText(file: File): Promise<string> {
+  try {
+    return await file.text()
+  } catch (error: unknown) {
+    throw new DraftFileReadError(file.name, { cause: error })
   }
 }
 

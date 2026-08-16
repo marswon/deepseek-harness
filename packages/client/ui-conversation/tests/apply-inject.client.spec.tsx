@@ -196,6 +196,25 @@ describe('conversation slot inject API', () => {
     await b.runtime.dispose()
   })
 
+  it('addFiles maps intake failures to product copy and appends ids on success', async () => {
+    const b = await bench()
+    // No-session face: the file path is absent with the image path.
+    expect(b.composerApi(undefined).addFiles).toBeUndefined()
+    const bar = b.composerApi(ROOT)
+    expect(await bar.addFiles!([new File(['内容'], 'a.md', { type: 'text/markdown' })])).toBeNull()
+    const big = new File([new ArrayBuffer(256 * 1024 + 1)], 'big.txt', { type: 'text/plain' })
+    expect(await bar.addFiles!([big])).toBe('文件过大（最大 256KB）')
+    const broken = new File(['x'], 'broken.txt', { type: 'text/plain' })
+    vi.spyOn(broken, 'text').mockRejectedValue(new Error('nope'))
+    expect(await bar.addFiles!([broken])).toBe('文件读取失败')
+    // Office documents: the 10MB cap carries its own size, and an
+    // unclassifiable extension fails before any parser loads.
+    const huge = new File([new ArrayBuffer(10 * 1024 * 1024 + 1)], 'huge.pdf')
+    expect(await bar.addDocuments!([huge])).toBe('文件过大（最大 10MB）')
+    expect(await bar.addDocuments!([new File(['x'], 'odd.pdf.exe')])).toBe('文档解析失败')
+    await b.runtime.dispose()
+  })
+
   it('inject fails loud when the session resolves no binding or the scope lacks the service', async () => {
     const b = await bench()
     const entry = b.entryOf('conversation.composer.bar')

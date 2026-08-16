@@ -86,6 +86,8 @@ interface BenchOptions {
   rightItems?: React.ReactNode
   attachments?: readonly ComposerAttachment[]
   addImages?: (files: readonly File[]) => string | null
+  addFiles?: (files: readonly File[]) => Promise<string | null>
+  addDocuments?: (files: readonly File[]) => Promise<string | null>
   commandMenuOpen?: boolean
   busyEnter?: 'queue' | 'steer'
   toggleCommandMenu?: (selection: { start: number; end: number }) => void
@@ -161,6 +163,8 @@ function bench(over?: BenchOptions) {
     inputActions: shell.actions,
     keyboard: shell,
     addImages: over?.addImages ?? (() => null),
+    addFiles: over?.addFiles ?? (() => Promise.resolve(null)),
+    addDocuments: over?.addDocuments ?? (() => Promise.resolve(null)),
     removeImage,
     draftImages: ids => ids.flatMap((id) => {
       const attachment = over?.attachments?.find(candidate => candidate.id === id)
@@ -229,7 +233,7 @@ describe('image draft rail', () => {
     const dataTransfer = { types: ['Files'], files: [image], dropEffect: 'none' }
     // The drag never touches the composer card: the listeners are page-wide.
     expect(fireEvent.dragEnter(document.body, { dataTransfer })).toBe(false)
-    expect(view.getByRole('status').textContent).toContain('图片拖动到此处即可添加')
+    expect(view.getByRole('status').textContent).toContain('松开以添加文件')
     expect(fireEvent.dragOver(document.body, { dataTransfer })).toBe(false)
     expect(dataTransfer.dropEffect).toBe('copy')
     expect(fireEvent.drop(document.body, { dataTransfer })).toBe(false)
@@ -297,7 +301,7 @@ describe('image draft rail', () => {
     expect(within.view.queryByRole('alert')).toBeNull()
   })
 
-  it('announces the format problem before any limit when the batch holds a non-image', () => {
+  it('announces the format problem before any limit when the batch holds an unsupported image type', () => {
     const addImages = vi.fn(() => '仅支持 PNG、JPG、WebP、GIF 格式的图片')
     const { view } = bench({
       addImages,
@@ -309,10 +313,10 @@ describe('image draft rail', () => {
         mediaTypes: ['image/png'] as const,
       },
     })
-    // Oversized AND over-count AND wrong type: the format rejection wins.
+    // Oversized AND over-count AND unsupported subtype: the format rejection wins.
     const files = [
-      new File([new ArrayBuffer(64)], 'a.pdf', { type: 'application/pdf' }),
-      new File([new ArrayBuffer(64)], 'b.pdf', { type: 'application/pdf' }),
+      new File([new ArrayBuffer(64)], 'a.tiff', { type: 'image/tiff' }),
+      new File([new ArrayBuffer(64)], 'b.tiff', { type: 'image/tiff' }),
     ]
     fireEvent.drop(document.body, { dataTransfer: { types: ['Files'], files, dropEffect: 'none' } })
     expect(addImages).toHaveBeenCalledWith(files)
@@ -394,7 +398,7 @@ describe('image draft rail', () => {
       const paste = () => {
         fireEvent.paste(textarea, {
           clipboardData: {
-            items: [{ kind: 'file', type: 'text/plain', getAsFile: () => new File(['x'], 'note.txt', { type: 'text/plain' }) }],
+            items: [{ kind: 'file', type: 'image/gif', getAsFile: () => new File(['x'], 'anim.gif', { type: 'image/gif' }) }],
             getData: () => '',
           },
         })
@@ -418,6 +422,180 @@ describe('image draft rail', () => {
     const dataTransfer = { types: ['Files'], files: [new File([Uint8Array.of(1)], 'x.png', { type: 'image/png' })], dropEffect: 'none' }
     fireEvent.drop(card, { dataTransfer })
     expect(view.getByRole('alert').textContent).toContain('图片读取服务不可用')
+  })
+})
+
+describe('file attachments', () => {
+  const textFile = (name = 'note.md', content = '# 标题') => new File([content], name, { type: 'text/markdown' })
+  const drop = (files: File[]) => {
+    fireEvent.drop(document.body, { dataTransfer: { types: ['Files'], files, dropEffect: 'none' } })
+  }
+
+  it('routes the attach button through the hidden file input and classifies the pick', async () => {
+    const addImages = vi.fn(() => null)
+    const addFiles = vi.fn(() => Promise.resolve(null))
+    const { view } = bench({ addImages, addFiles })
+    const input = view.container.querySelector<HTMLInputElement>('input[type="file"]')!
+    const open = vi.spyOn(input, 'click')
+    fireEvent.click(view.getByRole('button', { name: '添加文件' }))
+    expect(open).toHaveBeenCalledOnce()
+    // A mixed pick: image to the image path, text to the file path, binary refused.
+    const image = new File([Uint8Array.of(1)], 'pixel.png', { type: 'image/png' })
+    const text = textFile()
+    const binary = new File([Uint8Array.of(1)], 'archive.zip', { type: 'application/zip' })
+    Object.defineProperty(input, 'files', { value: [image, text, binary], configurable: true })
+    fireEvent.change(input)
+    expect(addImages).toHaveBeenCalledWith([image])
+    expect(addFiles).toHaveBeenCalledWith([text])
+    expect(view.getByRole('alert').textContent).toContain('暂不支持该类型文件')
+    // The value reset lets re-picking the same file fire change again.
+    expect(input.value).toBe('')
+    await act(async () => {})
+  })
+
+  it('ignores an empty or null pick list', () => {
+    const addFiles = vi.fn(() => Promise.resolve(null))
+    const { view } = bench({ addFiles })
+    const input = view.container.querySelector<HTMLInputElement>('input[type="file"]')!
+    // jsdom reports an empty FileList for a change without a pick.
+    fireEvent.change(input)
+    Object.defineProperty(input, 'files', { value: null, configurable: true })
+    fireEvent.change(input)
+    expect(addFiles).not.toHaveBeenCalled()
+    expect(view.queryByRole('alert')).toBeNull()
+  })
+
+  it('classifies a page drop into images, text files, office documents, and a refusal for the rest', async () => {
+    const addImages = vi.fn(() => null)
+    const addFiles = vi.fn(() => Promise.resolve(null))
+    const addDocuments = vi.fn(() => Promise.resolve(null))
+    const { view } = bench({ addImages, addFiles, addDocuments })
+    const image = new File([Uint8Array.of(1)], 'pixel.png', { type: 'image/png' })
+    // No MIME: the extension allowlist classifies (browsers leave .ts empty or wrong).
+    const script = new File(['let x = 1'], 'script.ts', { type: '' })
+    // Dotfiles classify by name.
+    const dotfile = new File(['dist/'], '.gitignore', { type: '' })
+    const doc = new File(['%PDF-1.4'], 'doc.pdf', { type: 'application/pdf' })
+    const zip = new File([Uint8Array.of(1)], 'archive.zip', { type: 'application/zip' })
+    drop([image, script, dotfile, doc, zip])
+    expect(addImages).toHaveBeenCalledWith([image])
+    expect(addFiles).toHaveBeenCalledWith([script, dotfile])
+    expect(addDocuments).toHaveBeenCalledWith([doc])
+    expect(view.getByRole('alert').textContent).toContain('暂不支持该类型文件')
+    await act(async () => {})
+  })
+
+  it('ignores a drop whose file list is empty', () => {
+    const addImages = vi.fn(() => null)
+    const { view } = bench({ addImages })
+    drop([])
+    expect(addImages).not.toHaveBeenCalled()
+    expect(view.queryByRole('alert')).toBeNull()
+  })
+
+  it('accepts a pasted text file without touching the draft', async () => {
+    const addFiles = vi.fn(() => Promise.resolve(null))
+    const { textarea, shell } = bench({ addFiles })
+    const file = textFile()
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        items: [{ kind: 'file', type: 'text/markdown', getAsFile: () => file }],
+        getData: () => '',
+      },
+    })
+    expect(addFiles).toHaveBeenCalledWith([file])
+    expect(shell.snapshot.draft).toBe('')
+    await act(async () => {})
+  })
+
+  it('announces an asynchronous addFiles rejection as a toast', async () => {
+    const addFiles = vi.fn(() => Promise.resolve<string | null>('文件过大（最大 256KB）'))
+    const { view } = bench({ addFiles })
+    drop([textFile()])
+    // The rejection lands one microtask later; nothing is announced synchronously.
+    expect(view.queryByRole('alert')).toBeNull()
+    await act(async () => {})
+    expect(view.getByRole('alert').textContent).toContain('文件过大（最大 256KB）')
+  })
+
+  it('shows file chips beside image thumbnails in the rail and removes them', () => {
+    const image: ComposerAttachment = {
+      kind: 'image', id: 'draft-img' as DraftAttachmentId,
+      file: new File([Uint8Array.of(1)], 'pixel.png', { type: 'image/png' }), previewUrl: 'blob:x',
+    }
+    const text: ComposerAttachment = { kind: 'file', id: 'draft-file' as DraftAttachmentId, name: 'notes.md', text: '# hi' }
+    const { view, removeImage } = bench({ attachments: [image, text] })
+    expect(view.getByText('notes.md')).toBeTruthy()
+    // Only the image carries the original-preview open control.
+    expect(view.getAllByTitle('查看原图')).toHaveLength(1)
+    fireEvent.click(view.getByRole('button', { name: '移除文件 notes.md' }))
+    expect(removeImage).toHaveBeenCalledWith('draft-file')
+    expect(view.queryByRole('dialog')).toBeNull()
+  })
+
+  it('submits files-only and file-plus-text drafts through the same ids slot', () => {
+    const text: ComposerAttachment = { kind: 'file', id: 'draft-file' as DraftAttachmentId, name: 'notes.md', text: '# hi' }
+    const only = bench({ attachments: [text] })
+    expect((only.view.getByRole('button', { name: '发送消息' }) as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.keyDown(only.textarea, { key: 'Enter' })
+    expect(only.sink).toHaveBeenCalledWith('', ['draft-file'], 'queue')
+    cleanup()
+    const typed = bench({ attachments: [text], draft: '看看这个' })
+    fireEvent.keyDown(typed.textarea, { key: 'Enter' })
+    expect(typed.sink).toHaveBeenCalledWith('看看这个', ['draft-file'], 'queue')
+  })
+
+  it('locks the attach button while the composer is locked or submitting', () => {
+    const inert = bench({ inert: true })
+    expect((inert.view.getByRole('button', { name: '添加文件' }) as HTMLButtonElement).disabled).toBe(true)
+    cleanup()
+    const busy = bench()
+    // Drive the machine into submitting through a claim that never settles.
+    act(() => {
+      busy.shell.setDraft('/goal ')
+      busy.shell.beginCommand(
+        { token: '/goal ', submit: () => new Promise<never>(() => {}) },
+        { start: 0, end: 6, draftRev: busy.shell.snapshot.draftRev },
+      )
+      busy.shell.submit()
+    })
+    expect(busy.shell.snapshot.phase).toBe('submitting')
+    expect((busy.view.getByRole('button', { name: '添加文件' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('routes office documents through addDocuments with a pending chip that settles', async () => {
+    let settle: (value: string | null) => void = () => {}
+    const addDocuments = vi.fn(() => new Promise<string | null>((resolve) => { settle = resolve }))
+    const { view } = bench({ addDocuments })
+    drop([new File(['%PDF-1.4'], 'report.pdf', { type: 'application/pdf' })])
+    expect(addDocuments).toHaveBeenCalledWith([expect.any(File)])
+    // The pending chip shows while local extraction runs.
+    expect(view.getByText('report.pdf')).toBeTruthy()
+    await act(async () => { settle(null) })
+    expect(view.queryByText('report.pdf')).toBeNull()
+  })
+
+  it('announces a document parse failure and clears the pending chip', async () => {
+    const addDocuments = vi.fn(() => Promise.resolve<string | null>('文档解析失败'))
+    const { view } = bench({ addDocuments })
+    drop([new File(['x'], 'broken.docx', { type: '' })])
+    expect(view.getByText('broken.docx')).toBeTruthy()
+    await act(async () => {})
+    expect(view.getByRole('alert').textContent).toContain('文档解析失败')
+    expect(view.queryByText('broken.docx')).toBeNull()
+  })
+
+  it('classifies office documents after plain text and before refusal', () => {
+    const addFiles = vi.fn(() => Promise.resolve(null))
+    const addDocuments = vi.fn(() => Promise.resolve(null))
+    const { view } = bench({ addFiles, addDocuments })
+    const text = new File(['plain'], 'notes.txt', { type: 'text/plain' })
+    const deck = new File(['x'], 'deck.pptx', { type: '' })
+    const bin = new File([Uint8Array.of(1)], 'archive.zip', { type: 'application/zip' })
+    drop([text, deck, bin])
+    expect(addFiles).toHaveBeenCalledWith([text])
+    expect(addDocuments).toHaveBeenCalledWith([deck])
+    expect(view.getByRole('alert').textContent).toContain('暂不支持该类型文件')
   })
 })
 

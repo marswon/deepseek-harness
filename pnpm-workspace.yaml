@@ -61,6 +61,10 @@ allowBuilds:
   # The Python runtime deploy includes the reviewed workspace postinstall that
   # restores the executable bit on node-pty's macOS spawn helper.
   '@deepseek-ai/dsh-subprocess-local@file:packages/subprocess/subprocess-local': true
+  # pdfjs-dist's optional native Node renderer. The composer uses the browser
+  # UMD build (text extraction only); the Node-side unit tests run its fake
+  # worker without canvas, so the build script stays denied.
+  canvas: false
 
 minimumReleaseAgeExclude:
   # Fresh pi-ai releases carry the model catalog updates that are the whole
@@ -75,6 +79,7 @@ minimumReleaseAgeExclude:
   - node-addon-require-builtin-win32-ia32-msvc@0.1.4
   - node-addon-require-builtin-win32-x64-msvc@0.1.4
   - node-addon-require-builtin@0.1.4
+  - dshmarket@1.9.0
 
 patchedDependencies:
   node-pty@1.1.0: patches/node-pty@1.1.0.patch

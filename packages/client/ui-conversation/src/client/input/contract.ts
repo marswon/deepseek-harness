@@ -14,7 +14,7 @@ import type {
 import type { QueueRow } from '../contract/queue.ts'
 import type { InputSubmitMode } from '../contract/composer-submission.ts'
 
-/** Browser-runtime identity of one unsent image draft. */
+/** Browser-runtime identity of one unsent draft attachment (image or text file). */
 export type DraftAttachmentId = Branded<'DraftAttachmentId'>
 
 /**
@@ -208,7 +208,7 @@ export interface InputMachineOptions {
 /** Published input state (the currency; per-session). */
 export interface InputState {
   readonly draft: string
-  /** Ordered runtime-only image ids; bytes and URLs stay in ConversationController. */
+  /** Ordered runtime-only draft attachment ids (images and text files); bytes, URLs, and text stay in ConversationController. */
   readonly imageIds: readonly DraftAttachmentId[]
   /** Monotonic draft revision (span CAS compares against this). */
   readonly draftRev: number

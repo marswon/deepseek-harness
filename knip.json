@@ -752,7 +752,8 @@
         "tests/**/*.ts"
       ],
       "ignoreDependencies": [
-        "@deepseek-ai/.+"
+        "@deepseek-ai/.+",
+        "dshmarket"
       ]
     },
     "packages/client/modules": {

@@ -54,6 +54,8 @@
 - textbox "Message the agent"
 - button "Commands":
   - img
+- button "Attach files":
+  - img
 - 'button "Access mode, current: Custom"': Custom
 - button "6% of context used"
 - button "Send message" [disabled]
