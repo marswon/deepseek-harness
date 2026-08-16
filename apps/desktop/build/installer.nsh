@@ -6,10 +6,12 @@
 ; with a path, so the installer looped on "cannot be closed" forever with
 ; nothing actually running — and its Stop-Process sweep then hit unrelated
 ; processes. Since 0.1.0-rc.12 the Harness runtime runs from the user data
-; directory, so only Electron can hold the install directory open. The updater
-; launches NSIS only after Electron exits; this macro still kills and polls an
-; exact image-name straggler before replacement. taskkill needs no WMI, works
-; when the process is gone (prints an error, harmless), and never prompts.
+; directory, so only Electron can hold the install directory open. Older NSIS
+; installers can remain in electron-updater's pending directory and retain the
+; installer mutex. This macro clears those stale siblings while excluding its
+; own parent, then kills and polls an exact app-image straggler before
+; replacement. taskkill needs no WMI, works when the process is gone (prints an
+; error, harmless), and never prompts.
 ;
 ; electron-builder's allowOnlyOneInstallerInstance.nsh picks this up via
 ; `!ifmacrodef customCheckAppRunning`, replacing the stock macro for both the
@@ -20,6 +22,10 @@
     # The app's detached updater waiter starts this installer after Electron exits.
     Sleep 500
   ${endIf}
+  # electron-updater launches NSIS from this cache. Exclude the current NSIS
+  # process (the PowerShell process's parent) while clearing earlier attempts.
+  nsExec::Exec `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "$parent = (Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId; Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like ($env:LOCALAPPDATA + '\@deepseek-aidsh-desktop-updater\pending\*') -and $_.ProcessId -ne $parent } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"`
+  Pop $0
   nsExec::Exec `"$SYSDIR\cmd.exe" /C taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
   # taskkill returning does not guarantee that Windows has released every

@@ -62,13 +62,13 @@ jobs:
         shell: pwsh
         run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.script }}
         env:
-          GH_TOKEN: ${{ github.event_name == 'push' && github.token || '' }}
+          GH_TOKEN: ''
 
       - name: Package non-Windows desktop app
         if: ${{ !startsWith(matrix.target, 'win-') }}
         run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.script }}
         env:
-          GH_TOKEN: ${{ github.event_name == 'push' && github.token || '' }}
+          GH_TOKEN: ''
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
