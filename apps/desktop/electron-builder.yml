@@ -38,8 +38,13 @@ win:
     - nsis
     - portable
 nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
+  # Per-user one-click install: no UAC, no directory choice, updates never
+  # touch admin-writable locations. The assisted installer let users install
+  # per-machine under Program Files, and every update then failed to write
+  # files there — surfacing a misleading "cannot be closed" prompt from the
+  # extraction retry loop.
+  oneClick: true
+  perMachine: false
   artifactName: DeepSeek-Harness-Setup-${version}.${ext}
 portable:
   artifactName: DeepSeek-Harness-${version}.${ext}

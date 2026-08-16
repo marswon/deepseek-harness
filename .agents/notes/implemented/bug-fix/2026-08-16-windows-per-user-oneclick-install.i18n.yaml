@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-16-windows-per-user-oneclick-install.md
+2026-08-16-windows-per-user-oneclick-install.md: 07fe42685873e323932cf2a14b574a34197b4986
+2026-08-16-windows-per-user-oneclick-install.zh.md: 03dd9c9007704b9cca61d0a83bce5449633bf702
