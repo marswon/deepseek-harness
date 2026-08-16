@@ -16,14 +16,14 @@ dshmarket 需要 Corepack 和 pnpm，但打包运行时只有 Node 解释器。�
 
 - Windows：从 `app-update.yml` 的 `updaterCacheDirName` 解析 pending 安装器路径，先强杀该目录中遗留的安装器，再启动 detached PowerShell 等待器。等待器只在 Electron PID 消失后才带 `--updated --force-run` 运行 NSIS；pending 路径无法解析时回退到 `quitAndInstall`。
 - NSIS：`build/installer.nsh` 替换原生运行进程弹窗，强杀后在替换文件前进行有界轮询。
-- macOS：把 dmg 下载到 `userData/updates/<版本>`，打开它并给出拖拽替换的指引。带 tag 的发布工作流会提供 Developer ID 凭据并显式开启公证，使替换后的应用继续受信任。
+- macOS：把 dmg 下载到 `userData/updates/<版本>`，打开它并给出拖拽替换的指引。当前发布渠道没有 Apple Developer 凭据，带 tag 的构建保持 ad-hoc 签名，替换后会触发 Gatekeeper 提示。
 - [内嵌 Node 运行时](2026-08-14-desktop-bundled-node-runtime.md)携带 Corepack 和 npm。桌面 overlay 会关闭 dshmarket 不受管理的重启，Harness 重启由 Electron 菜单接管。
 
 ## 否决的方案
 
 **保留 quitAndInstall、只加快应用退出。** rc.15 停掉 Harness 子进程后已经退得很快，更新依然失败；僵尸互斥锁问题不在应用的退出路径上。否决。
 
-**继续使用 ad-hoc 签名发布。** 手动 dmg 流程避开了 Squirrel.Mac 的签名检查，但不能让替换后的应用获得 Gatekeeper 信任。带 tag 的构建必须使用已有 Developer ID 凭据和公证。否决。
+**在有 Developer ID 凭据前阻止所有发布。** 这会在无法创建 Apple 身份的同时扣留可用的 Windows 和 Linux 修复。当前发布渠道发布已记录 Gatekeeper 限制的 ad-hoc 签名 macOS 产物；未来可信渠道仍需要公证。否决。
 
 **更新时先卸载再安装。** oneClick NSIS 安装器在安装时本来就会先跑旧卸载器；卡点是进程检查和互斥锁，不是文件替换。否决，因为打错了层。
 

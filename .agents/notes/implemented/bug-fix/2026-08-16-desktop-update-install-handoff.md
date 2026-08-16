@@ -16,14 +16,14 @@ dshmarket needs Corepack and pnpm, but the packaged runtime contained only the N
 
 - Windows: resolve the pending installer from `app-update.yml`'s `updaterCacheDirName`, force-stop installers from that directory, then spawn a detached PowerShell waiter. The waiter starts NSIS with `--updated --force-run` only after the Electron PID is absent. When the pending path cannot be resolved, fall back to `quitAndInstall`.
 - NSIS: `build/installer.nsh` replaces the stock running-process dialog with a force kill and bounded process poll before replacement.
-- macOS: download the dmg into `userData/updates/<version>`, open it, and show drag-replace instructions. The tag release workflow supplies Developer ID credentials and explicitly enables notarization, so the replacement remains trusted.
+- macOS: download the dmg into `userData/updates/<version>`, open it, and show drag-replace instructions. The current release channel has no Apple Developer credentials, so tagged builds remain ad-hoc signed and Gatekeeper prompts after replacement.
 - The [bundled Node runtime](2026-08-14-desktop-bundled-node-runtime.md) carries Corepack and npm. The desktop overlay disables dshmarket's unmanaged restart; the Electron menu owns Harness restarts.
 
 ## Alternatives considered
 
 **Keep quitAndInstall and only speed up the app quit.** rc.15 already quit promptly after stopping the Harness child and updates still failed; the zombie-mutex failure lives outside the app's quit path. Rejected.
 
-**Keep release builds ad-hoc signed.** A manual dmg flow avoids Squirrel.Mac's signature check but does not make a replacement trusted by Gatekeeper. Tagged builds must use the available Developer ID credentials and notarization. Rejected.
+**Block every release until Developer ID credentials exist.** This would withhold working Windows and Linux fixes without creating an Apple identity. The current release channel publishes ad-hoc signed macOS artifacts with the Gatekeeper limitation documented; notarization remains required for a trusted future channel. Rejected.
 
 **Uninstall-then-install inside the update.** The oneClick NSIS installer already runs the old uninstaller during install; the blockers were the process gate and the mutex, not file replacement. Rejected as addressing the wrong layer.
 

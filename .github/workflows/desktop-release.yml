@@ -32,11 +32,9 @@ jobs:
       matrix:
         include:
           - target: mac-arm64
-            arch: arm64
             runner: macos-14
             script: package:mac:arm64
           - target: mac-x64
-            arch: x64
             runner: macos-13
             script: package:mac:x64
           - target: win-x64
@@ -73,23 +71,10 @@ jobs:
           GH_TOKEN: ${{ github.event_name == 'push' && github.token || '' }}
 
       - name: Package non-Windows desktop app
-        if: ${{ !startsWith(matrix.target, 'win-') && !(startsWith(matrix.target, 'mac-') && github.event_name == 'push') }}
+        if: ${{ !startsWith(matrix.target, 'win-') }}
         run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.script }}
         env:
           GH_TOKEN: ${{ github.event_name == 'push' && github.token || '' }}
-
-      - name: Package signed and notarized macOS app
-        if: ${{ startsWith(matrix.target, 'mac-') && github.event_name == 'push' }}
-        run: |
-          pnpm --filter @deepseek-ai/dsh-desktop run stage
-          pnpm --filter @deepseek-ai/dsh-desktop exec electron-builder --mac --${{ matrix.arch }} --config.mac.notarize=true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CSC_LINK: ${{ secrets.MAC_CERTIFICATE_BASE64 }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

@@ -34,7 +34,7 @@ pnpm --filter @deepseek-ai/dsh-desktop run package:mac:arm64   # plus :mac:x64 /
 pnpm --filter @deepseek-ai/dsh-desktop run package:win:cross   # unsigned Win x64 build from a non-Windows host
 ```
 
-打包要求宿主平台/架构与目标一致（`scripts/verify-target.mjs` 强制），因为 node-pty prebuild 与 landlock 启动器按平台分发。本地 macOS 产物使用 ad-hoc 签名；带 `v` tag 的发布工作流会提供 Developer ID 证书并启用 Apple 公证。`package:win:cross` 是有意的例外：它用 `stage:win` 从 registry 抓取 win32/x64 平台二进制包，并以 `signAndEditExecutable=false` 在任意宿主上构建未签名的 NSIS/Portable 产物（rcedit 离开 Windows 需要 wine）；随后 `scripts/after-pack.cjs` 用 resedit 把 `build/icon.ico` 与产品版本写进 exe，安装后的应用不再显示 Electron 默认图标与元数据。
+打包要求宿主平台/架构与目标一致（`scripts/verify-target.mjs` 强制），因为 node-pty prebuild 与 landlock 启动器按平台分发。当前发布渠道没有配置 Apple Developer 凭据，因此 macOS 产物使用 ad-hoc 签名且未公证，安装或替换后会触发 Gatekeeper 提示。`package:win:cross` 是有意的例外：它用 `stage:win` 从 registry 抓取 win32/x64 平台二进制包，并以 `signAndEditExecutable=false` 在任意宿主上构建未签名的 NSIS/Portable 产物（rcedit 离开 Windows 需要 wine）；随后 `scripts/after-pack.cjs` 用 resedit 把 `build/icon.ico` 与产品版本写进 exe，安装后的应用不再显示 Electron 默认图标与元数据。
 
 Release tag 必须是带 `v` 前缀的 semver（如 `v0.1.0-rc.23），不能用 `dsh-desktop-v*` 这类带命名空间的 tag：electron-updater 的 GitHub provider 会用 `semver.valid` 校验 releases feed 里的每个 tag，全部不合法时只会静默报 "No published versions on GitHub"。推送该 tag 会运行发布矩阵并发布产物。electron-updater 只负责版本检查和下载，安装交接由应用自己接管：Windows 上外壳先强杀 pending 目录里的僵尸安装器，再启动一个 detached PowerShell 等待器，确认 Electron 退出后才运行 NSIS 安装器；`build/installer.nsh` 也会等待所有 Electron 子进程消失后再替换文件。macOS 上应用把 dmg 下载到 `userData/updates/<版本>` 并打开，由用户拖拽替换；发布产物使用 Developer ID 签名并经公证，因此替换后的应用继续得到 Gatekeeper 信任。
 

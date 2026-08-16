@@ -38,8 +38,8 @@ mac:
     - dmg
     - zip
   hardenedRuntime: true
-  # The release CI passes --config.mac.notarize=true with Apple credentials;
-  # local packaging stays unsigned.
+  # This release channel currently has no Apple Developer credentials, so both
+  # local and CI builds remain ad-hoc signed and are not notarized.
   notarize: false
 win:
   target:
