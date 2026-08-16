@@ -17,7 +17,7 @@ Status: implemented
 询问以 **settings namespace** 为键，而不是提供方路由：
 
 - `ctx.llm.registerModelDiscovery(settingsNs, discover)` 让适配器插件为自己拥有的 namespace 提供「询问端点」的能力，`ctx.llm.discoverModels(settingsNs, request)` 发起询问。没有任何办法枚举哪些 namespace 注册过：询问不了的界面会从那句拒绝里知道，而一份无人消费的列表只会变成一个什么都不做的必填协议字段。以 namespace 为键是对的，因为配置界面已经从可配置提供方目录里拿到了它，也因为正在新增的提供方没有路由可点名。
-- `LlmModelDiscoveryRequest` 携带草稿——可选的 `provider`、可选的 `baseURL`、可选的 `api`、可选的 `apiKey`，以及一个 signal——且 `provider` 与 `baseURL` 至少要有一个，才有东西可答。`provider` 之所以存在，是因为适配器已经描述过的路由直接由它自己的注册表作答、完全不联网；只有它未描述的路由才会抵达某个端点。这条路径不写 settings 与 credentials。唯一的读取是请求所点名路由的凭据：配置界面拿到的是脱敏描述符而非已存的机密，因此草稿里的 `apiKey` 只在用户正键入时才存在；没有这次读取，已配置好的路由就会被不带认证地询问，只换回一个 401。键入的密钥优先，因为那正是被测试的那一把。
+- `LlmModelDiscoveryRequest` 携带草稿——可选的 `provider`、可选的 `baseURL`、可选的 `api`、可选的 `apiKey`，以及一个 signal——且 `provider` 与 `baseURL` 至少要有一个，才有东西可答。`provider` 之所以存在，是因为适配器已经描述过的路由直接由它自己的注册表作答、完全不联网；只有它未描述的路由才会抵达某个端点。（该请求后来新增了 `validate`，即这条注册表捷径的检查密钥例外——见[密钥指引后端笔记](../feature/2026-08-16-provider-key-guidance-backend.md)。）这条路径不写 settings 与 credentials。唯一的读取是请求所点名路由的凭据：配置界面拿到的是脱敏描述符而非已存的机密，因此草稿里的 `apiKey` 只在用户正键入时才存在；没有这次读取，已配置好的路由就会被不带认证地询问，只换回一个 401。键入的密钥优先，因为那正是被测试的那一把。
 - `LlmDiscoveredModel` 除 `id` 外每个字段都可选，因为大多数列表只公布 id。回复是候选而非 catalog：采纳其中一条的界面仍要补上适配器所需的容量。
 - `llm.discoverModels` 把同一份草稿送过协议层。它的 `apiKey` 是可承载机密的第三个、也是最后一个载荷（另两个是 `settings.update`/`mutate` 与 `credentials.set`），且绝不被存储或回显。它确实会像其他承载机密的载荷一样随客户端外发信封同行，`subscribeEnvelopes()` 观察者看得到；把那个抽头脱敏是整个配置面的改动，不该由这一个方法独自决定。除密钥之外，将它限制为仅可通过回环访问还有第二个理由：它让宿主向调用方选定的 URL 发起 GET 并回报结果，这是匿名 LAN 调用者不该拥有的探测能力。每一种拒绝都折叠为 `model-discovery-failed`，其消息是适配器自己的文本，details 点名被询问的端点，绝不点名所提供的凭据。
 

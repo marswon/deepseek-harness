@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-桌面端首个构建（见 [Desktop shell as a supervised child-process wrapper](2026-08-14-desktop-shell-child-process.md)）通过 `ELECTRON_RUN_AS_NODE=1` 复用 Electron 二进制作为 Harness 子进程的 Node。在真实 Windows 上，选择工作区时原生文件夹对话框 worker 崩溃：`FATAL ERROR: Error::New napi_get_last_error_info`，崩在 `readUtf16`（`packages/host/directory-picker-native/src/win32-dialog-bindings.ts` 里的 `koffi.view(address, …)`）。在 darwin 上用两行脚本即可复现：`koffi.address` + `koffi.view` 在 Electron-as-Node 下致命崩溃，在官方 Node 下正常。原因是 Electron 的 V8 sandbox 拒绝任意原生地址上的 N-API 裸内存视图，而官方 Node 的分配器接受。
+桌面端首个构建（见 [Desktop shell as a supervised child-process wrapper](../architecture/2026-08-14-desktop-shell-child-process.md)）通过 `ELECTRON_RUN_AS_NODE=1` 复用 Electron 二进制作为 Harness 子进程的 Node。在真实 Windows 上，选择工作区时原生文件夹对话框 worker 崩溃：`FATAL ERROR: Error::New napi_get_last_error_info`，崩在 `readUtf16`（`packages/host/directory-picker-native/src/win32-dialog-bindings.ts` 里的 `koffi.view(address, …)`）。在 darwin 上用两行脚本即可复现：`koffi.address` + `koffi.view` 在 Electron-as-Node 下致命崩溃，在官方 Node 下正常。原因是 Electron 的 V8 sandbox 拒绝任意原生地址上的 N-API 裸内存视图，而官方 Node 的分配器接受。
 
 ## Decision
 

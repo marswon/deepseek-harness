@@ -731,10 +731,11 @@ describe('config unary surface', () => {
     }
     const providerRow = {
       provider: 'openai',
-      displayName: 'openai',
+      displayName: 'OpenAI',
       settingsNs: 'llm-pi-ai',
       settingsPath: ['providers', 'openai'],
       active: false,
+      consoleUrl: 'https://platform.openai.com/api-keys',
     }
     const group = { id: 'deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-v4-flash', name: 'Flash' }] }
     const api = scriptedApi({
@@ -784,6 +785,7 @@ describe('config unary surface', () => {
       baseURL: 'https://gateway.acme.example/v1',
       api: 'openai-completions',
       apiKey: 'probe-key',
+      validate: true,
     })
     expect(discovered.result).toEqual({ ok: true, value: { models: [{ id: 'acme-large', contextWindow: 65536 }] } })
 
@@ -803,6 +805,7 @@ describe('config unary surface', () => {
       baseURL: 'https://gateway.acme.example/v1',
       api: 'openai-completions',
       apiKey: 'probe-key',
+      validate: true,
     })
   })
 

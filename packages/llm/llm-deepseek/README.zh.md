@@ -56,7 +56,11 @@ harness LLM（大语言模型）seam 的 DeepSeek chat-completions 适配器：�
 
 唯一在注册期捕获的事实是重试策略：其解析值变化时，插件原地重新注册该路由（同一适配器实例、一个同步区段），因此 `ctx.llm.providerRetryPolicy('deepseek-official')` 始终报告当前策略。
 
-该插件还会在可配置提供方目录（`ctx.llm.listConfigurableProviders()`）中声明自己的路由：提供方为 `deepseek-official`，settings namespace 为 `llm-deepseek`，settings path 为空——整个分节就是 profile。配置界面借助该条目，把本适配器与休眠的 pi-ai 提供方一并呈现。
+该插件还会在可配置提供方目录（`ctx.llm.listConfigurableProviders()`）中声明自己的路由：提供方为 `deepseek-official`，settings namespace 为 `llm-deepseek`，settings path 为空——整个分节就是 profile——并携带 `consoleUrl` 指明 DeepSeek 官方获取密钥页面（`https://platform.deepseek.com/api_keys`）。配置界面借助该条目，把本适配器与休眠的 pi-ai 提供方一并呈现。
+
+## 端点询问
+
+插件通过 `ctx.llm.registerModelDiscovery('llm-deepseek', …)` 回答“这个提供方能服务哪些模型？”，面向配置界面正在编辑或起草的路由。点名 `deepseek-official` 的请求直接由已配置的 catalog 作答，不联网——与 pi-ai 孪生适配器对其 catalog 路由的姿态相同。`validate: true` 是检查密钥动作：答案必须来自一次实时往返，因此端点会被询问——`GET {baseURL}/models`，OpenAI 兼容、bearer 密钥——草稿未给端点或给了空串时，`baseURL` 回退到已配置端点（其本身默认公共 API）。表单中输入的 `apiKey` 优先于已存凭据，后者只在真正联网的路径上解析，且当任何地方都没有配置密钥时以 `MISSING_CREDENTIAL` 失败。401 或 403 回复“check the API key”，无法到达的端点回复“could not reach”，并沿用与 pi-ai 孪生相同的字节上限、中止纪律与 `DISCOVERY_FAILED` 分类。这里什么都不存储：回复是界面提供给用户采纳的候选元数据。
 
 ## 应用归因
 

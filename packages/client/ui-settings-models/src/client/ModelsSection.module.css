@@ -200,6 +200,52 @@
   gap: 6px;
 }
 
+/* Key input with its 检查 button beside it; the Input primitive's wrapper is
+   the flexible half. */
+.keyRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.keyRow > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The check never reads as a commit: ghost capsule, pinned to the field edge. */
+.keyCheckButton {
+  flex: none;
+}
+
+.keyCheckSuccess {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-success-primary);
+}
+
+/* Get-a-key guidance under the key row: caption quiet text with the one link
+   in the business accent, the same way a fault line stays small. */
+.keyGuidance {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.keyGuidanceLink {
+  color: var(--dsw-alias-state-business-primary);
+  text-decoration: none;
+}
+
+.keyGuidanceLink:hover {
+  text-decoration: underline;
+}
+
 .fieldLabel {
   display: inline-flex;
   align-items: center;

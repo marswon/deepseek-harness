@@ -2947,9 +2947,9 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
     llm: {
       providers: request => ok(request, {
         providers: [
-          { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [], active: true },
-          { provider: 'openai', displayName: 'openai', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'], active: true, declared: false },
-          { provider: 'anthropic', displayName: 'anthropic', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'anthropic'], active: false, declared: false },
+          { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [], active: true, consoleUrl: 'https://platform.deepseek.com/api_keys' },
+          { provider: 'openai', displayName: 'OpenAI', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'], active: true, declared: false, consoleUrl: 'https://platform.openai.com/api-keys' },
+          { provider: 'anthropic', displayName: 'Anthropic', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'anthropic'], active: false, declared: false, consoleUrl: 'https://console.anthropic.com/settings/keys' },
           // One hand-declared route, so a surface reading this fixture meets
           // the tagged shape rather than only the shipped one.
           { provider: 'acme-gateway', displayName: 'Acme Gateway', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'acme-gateway'], active: true, declared: true },

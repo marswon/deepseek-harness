@@ -6,7 +6,7 @@ English | [中文](2026-08-14-desktop-bundled-node-runtime.zh.md)
 
 ## Problem
 
-The first desktop build ([desktop shell as a supervised child-process wrapper](2026-08-14-desktop-shell-child-process.md)) ran the Harness child through `ELECTRON_RUN_AS_NODE=1`, reusing the Electron binary as Node. On real Windows, choosing a workspace crashed the native folder-dialog worker with `FATAL ERROR: Error::New napi_get_last_error_info` from `readUtf16` (`koffi.view(address, …)` in `packages/host/directory-picker-native/src/win32-dialog-bindings.ts`). Reproduced on darwin with a two-line script: `koffi.address` + `koffi.view` under Electron-as-Node fatals, and works under stock Node. Electron's V8 sandbox rejects N-API raw-memory views over arbitrary native addresses; stock Node's allocator accepts them.
+The first desktop build ([desktop shell as a supervised child-process wrapper](../architecture/2026-08-14-desktop-shell-child-process.md)) ran the Harness child through `ELECTRON_RUN_AS_NODE=1`, reusing the Electron binary as Node. On real Windows, choosing a workspace crashed the native folder-dialog worker with `FATAL ERROR: Error::New napi_get_last_error_info` from `readUtf16` (`koffi.view(address, …)` in `packages/host/directory-picker-native/src/win32-dialog-bindings.ts`). Reproduced on darwin with a two-line script: `koffi.address` + `koffi.view` under Electron-as-Node fatals, and works under stock Node. Electron's V8 sandbox rejects N-API raw-memory views over arbitrary native addresses; stock Node's allocator accepts them.
 
 ## Decision
 

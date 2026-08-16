@@ -73,15 +73,39 @@ describe.skipIf(MODE === 'record')('web e2e: first-run DeepSeek credential setup
 
     const credentialStep = page.getByRole('dialog', { name: '添加一个 API Key 开始使用' })
     await credentialStep.waitFor({ timeout: 15_000 })
-    const keyInput = credentialStep.getByLabel('API 密钥', { exact: true })
-    await keyInput.waitFor({ timeout: 10_000 })
+    // The wizard opens on its 了解 step; the key field is one step in.
     const initial = await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(MISSING_EXPECTED, initial, MODE)
+    await credentialStep.getByRole('button', { name: '下一步' }).click()
+
+    // The 完成 gate rides a live authenticated probe, which a keyless lane
+    // cannot make for real: the host would ask api.deepseek.com with the fake
+    // key. Stub the wire call — the same carrier the settings.describe hold
+    // below uses — so the check answers deterministically without network.
+    await page.route('**/api/llm.discoverModels', async (route) => {
+      const request = route.request().postDataJSON() as { rpcId: string }
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          type: 'server-response',
+          rpcId: request.rpcId,
+          result: { ok: true, value: { models: [{ id: 'deepseek-v4-flash' }] } },
+        }),
+      })
+    })
 
     const secret = `dsh_onboarding_${randomBytes(12).toString('hex')}`
+    const keyInput = credentialStep.getByLabel('API 密钥', { exact: true })
+    await keyInput.waitFor({ timeout: 10_000 })
     await keyInput.fill(secret)
-    await credentialStep.getByRole('button', { name: '保存并继续' }).click()
+    // 完成 stays disabled until the provider accepts the key.
+    expect(await credentialStep.getByRole('button', { name: '完成', exact: true }).isDisabled()).toBe(true)
+    await credentialStep.getByRole('button', { name: '检查', exact: true }).click()
+    await credentialStep.getByText('连接成功，发现 1 个可用模型').waitFor({ timeout: 10_000 })
+    await credentialStep.getByRole('button', { name: '完成', exact: true }).click()
+    await credentialStep.getByRole('button', { name: '开始使用' }).click()
     await credentialStep.waitFor({ state: 'detached', timeout: 15_000 })
+    await page.unroute('**/api/llm.discoverModels')
     expect(await page.locator('#root').evaluate(root => (root as HTMLElement).inert)).toBe(false)
 
     const stored = await readFile(join(scaffold.harnessHome, '.credentials.yaml'), 'utf8')

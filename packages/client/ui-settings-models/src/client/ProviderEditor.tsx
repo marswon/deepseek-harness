@@ -33,6 +33,7 @@ import {
 } from './DeepSeekModelsEditor.tsx'
 import { apiKeyFailure } from './apiKey.ts'
 import { EditorFooter } from './EditorFooter.tsx'
+import { KeyCheckButton, KeyCheckStatus, KeyGuidance, useKeyCheck } from './KeyCheck.tsx'
 import { ModelListEditor } from './ModelListEditor.tsx'
 import { deriveKeyRef, messageOf, protocolChoices } from './store.ts'
 import type { en } from './locales.ts'
@@ -50,6 +51,8 @@ export interface ProviderEditorProps {
   provider: string
   /** Display name for the card title. */
   displayName: string
+  /** The provider's official get-a-key page, when the adapter knows one. */
+  consoleUrl?: string
   /** Hide the title row (the add card renders its own provider select). */
   hideTitle?: boolean
   /**
@@ -130,7 +133,7 @@ function layoutOf(ns: string): EditorLayout {
 }
 
 /** The credential reference this profile resolves keys through. */
-function refFor(namespace: SettingsNamespaceView, path: readonly string[], provider: string): string {
+export function refFor(namespace: SettingsNamespaceView, path: readonly string[], provider: string): string {
   const profile = getPath(namespace.value, path)
   const named = typeof profile === 'object' && profile !== null
     ? (profile as { apiKeyEnv?: unknown }).apiKeyEnv
@@ -150,6 +153,9 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   const [keyState, setKeyState] = useState<CredentialView | undefined>(undefined)
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
+  // The live key probe beside the key field; a fresh keystroke makes its
+  // verdict stale, so the field's onChange resets it.
+  const keyCheck = useKeyCheck(api)
   // A settings success advances both retry baselines immediately. Keeping the
   // derived fields in the draft prevents a pushed namespace refresh from
   // turning them into deletions when the following credential write is retried.
@@ -362,19 +368,39 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       <>
         <div className={styles['field']}>
           <span className={styles['fieldLabel']}>{t('keyInput')}</span>
-          <Input
-            type="password"
-            autoComplete="off"
-            value={keyDraft}
-            placeholder={keyPlaceholder}
-            aria-label={t('keyInput')}
-            aria-invalid={shownKeyFailure !== undefined}
-            required={props.credentialRequired === true}
-            autoFocus={props.autoFocusCredential === true}
-            disabled={disabled || keyLocked}
-            onChange={(event) => { setKeyDraft(event.target.value) }}
-          />
+          <div className={styles['keyRow']}>
+            <Input
+              type="password"
+              autoComplete="off"
+              value={keyDraft}
+              placeholder={keyPlaceholder}
+              aria-label={t('keyInput')}
+              aria-invalid={shownKeyFailure !== undefined}
+              required={props.credentialRequired === true}
+              autoFocus={props.autoFocusCredential === true}
+              disabled={disabled || keyLocked}
+              onChange={(event) => {
+                setKeyDraft(event.target.value)
+                // A verdict belongs to the key it probed; a new keystroke
+                // makes it stale, so it clears instead of reading as current.
+                keyCheck.reset()
+              }}
+            />
+            <KeyCheckButton
+              t={t}
+              state={keyCheck.state}
+              disabled={disabled || keyLocked || shownKeyFailure !== undefined}
+              onCheck={() => { void keyCheck.check(probe) }}
+            />
+          </div>
           {shownKeyFailure === undefined ? null : <p className={styles['error']}>{t(shownKeyFailure)}</p>}
+          <KeyCheckStatus t={t} state={keyCheck.state} />
+          <KeyGuidance
+            provider={props.provider}
+            displayName={props.displayName}
+            consoleUrl={props.consoleUrl}
+            t={t}
+          />
         </div>
         {props.credentialOnly === true ? null : <details className={styles['customized']}>
           <summary className={styles['customizedSummary']}>
