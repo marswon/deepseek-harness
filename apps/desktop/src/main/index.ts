@@ -119,6 +119,13 @@ if (!gotLock) {
       isPackaged: app.isPackaged,
       updateFeedPresent: app.isPackaged && existsSync(join(process.resourcesPath, 'app-update.yml')),
       log: (line) => { log.write(`[updater] ${line}`) },
+      prepareForInstall: async () => {
+        // The NSIS installer spawns before the app quits; a live Harness
+        // child keeps files under the install directory locked and the
+        // installer reports the app as impossible to close. Stop it first.
+        quitting = true
+        await harness.stop()
+      },
     })
     installMenu(
       {

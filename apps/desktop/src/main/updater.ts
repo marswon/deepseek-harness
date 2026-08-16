@@ -20,6 +20,14 @@ export interface UpdaterOptions {
   readonly updateFeedPresent: boolean
   /** Status sink mirroring the Harness log writer. */
   readonly log: (line: string) => void
+  /**
+   * Runs before quitAndInstall: stop the Harness child so its bundled
+   * node.exe no longer locks files under the install directory. electron-
+   * updater spawns the NSIS installer before quitting the app, so a child
+   * that is still alive at that point makes the installer report the app as
+   * impossible to close.
+   */
+  readonly prepareForInstall?: () => Promise<void>
 }
 
 /**
@@ -84,7 +92,13 @@ export function setupAutoUpdater(options: UpdaterOptions): () => void {
         buttons: ['Restart', 'Later'],
       })
       .then(({ response }) => {
-        if (response === 0) autoUpdater.quitAndInstall()
+        if (response !== 0) return
+        const prepare = options.prepareForInstall ?? (() => Promise.resolve())
+        void prepare()
+          .catch((error: unknown) => {
+            options.log(`prepare for install failed: ${error instanceof Error ? error.message : String(error)}`)
+          })
+          .finally(() => { autoUpdater.quitAndInstall() })
       })
   })
   return check
