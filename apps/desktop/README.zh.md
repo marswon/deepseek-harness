@@ -18,7 +18,7 @@ Electron main (apps/desktop)
      └── http://127.0.0.1:<port>  Harness web UI
 ```
 
-- 开发模式用系统 Node 跑仓库构建产物（`apps/cli/lib/bin.js`）；打包产物在 `dsh-runtime/node-runtime` 内嵌的官方 Node.js 运行时上跑 staged 闭包（staging 脚本按目标平台抓取）。两者都传 `--expose-internals`，Cordis loader 因此不需要原生 `node-addon-require-builtin` 回退。不复用 Electron 二进制当 Node：Electron 的 V8 sandbox 会让 N-API 裸内存视图致命崩溃（win32 对话框 worker 里的 `koffi.view`）。
+- 开发模式用系统 Node 跑仓库构建产物（`apps/cli/lib/bin.js`）；打包产物在首次启动时把内嵌的 staged 运行时闭包（含按目标平台抓取的官方 Node.js，位于 `dsh-runtime/node-runtime`）复制到桌面数据根目录（`runtimes/<版本>`）并从副本启动，安装目录因此永远不会承载运行中的进程（Windows 会锁定运行中可执行文件所在目录，NSIS 更新曾因此失败）。两者都传 `--expose-internals`，Cordis loader 因此不需要原生 `node-addon-require-builtin` 回退。不复用 Electron 二进制当 Node：Electron 的 V8 sandbox 会让 N-API 裸内存视图致命崩溃（win32 对话框 worker 里的 `koffi.view`）。
 - node-pty 自带 N-API prebuild，ABI 在 Node 22/24 间稳定，打包时无需原生重编（`npmRebuild: false`）。
 - 窗口只放行 loopback HTTP 与本地 shell 页；其余 http(s) 目标交给系统浏览器。renderer 永远拿不到 Node 权限。
 

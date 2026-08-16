@@ -6,7 +6,7 @@ import { HarnessLog } from './harness-log.ts'
 import { HarnessProcess } from './harness-process.ts'
 import { installMenu } from './menu.ts'
 import { ensureDesktopPaths, resolveDesktopPaths } from './paths.ts'
-import { buildHarnessLaunch } from './runtime.ts'
+import { buildHarnessLaunch, resolveHarnessRuntime } from './runtime.ts'
 import type { RuntimeMode } from './runtime.ts'
 import { renderShellPage } from './shell-page.ts'
 import type { ShellAction } from './shell-page.ts'
@@ -66,7 +66,11 @@ async function startHarness(): Promise<void> {
   showShellPage({ status: 'starting' })
   stopping = false
   try {
-    const url = await harness.start(buildHarnessLaunch(runtimeMode, paths, process.env))
+    // Packaged builds stage the runtime under the data root first: the
+    // install directory must stay free of running processes so updates can
+    // close and replace it (Windows locks a running executable's directory).
+    const runtime = await resolveHarnessRuntime(runtimeMode, paths, app.getVersion())
+    const url = await harness.start(buildHarnessLaunch(runtime, paths, process.env))
     harnessUrl = url
     log.write(`harness ready at ${url}`)
     await createMainWindowOnce().loadURL(url)

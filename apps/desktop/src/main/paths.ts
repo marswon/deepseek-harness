@@ -20,6 +20,15 @@ export interface DesktopPaths {
   readonly logDir: string
   /** Harness child stdout/stderr log, viewed from the recovery page and menu. */
   readonly logFile: string
+  /**
+   * Per-version staged runtime roots. A packaged build copies its bundled
+   * dsh-runtime here and launches from the copy: Windows locks the directory
+   * of a running executable, so launching from the install directory made the
+   * NSIS updater's close-and-replace unreliable (and once produced a corrupt
+   * half-replaced install). Staging under userData keeps the install
+   * directory free of running processes.
+   */
+  readonly runtimeRoot: string
 }
 
 /**
@@ -36,6 +45,7 @@ export function resolveDesktopPaths(userData: string): DesktopPaths {
     launchRoot: join(userData, 'launch-root'),
     logDir,
     logFile: join(logDir, 'harness.log'),
+    runtimeRoot: join(userData, 'runtimes'),
   }
 }
 
@@ -44,5 +54,5 @@ export function resolveDesktopPaths(userData: string): DesktopPaths {
  * @param paths - the layout to materialize.
  */
 export async function ensureDesktopPaths(paths: DesktopPaths): Promise<void> {
-  await Promise.all([paths.dshHome, paths.launchRoot, paths.logDir].map(dir => mkdir(dir, { recursive: true })))
+  await Promise.all([paths.dshHome, paths.launchRoot, paths.logDir, paths.runtimeRoot].map(dir => mkdir(dir, { recursive: true })))
 }

@@ -19,7 +19,7 @@ vi.mock('electron', () => ({
   shell: { openPath: (path: string) => mocks.openPath(path) },
   Menu: {
     buildFromTemplate: (template: unknown) => template,
-    setApplicationMenu: (menu: unknown): unknown => mocks.setApplicationMenu(menu) as unknown,
+    setApplicationMenu: (menu: unknown): void => { mocks.setApplicationMenu(menu) },
   },
 }))
 
