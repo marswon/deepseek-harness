@@ -1,10 +1,10 @@
 /** Actions the shell page can request through the preload bridge. */
-export type ShellAction = 'retry' | 'view-logs' | 'quit'
+export type ShellAction = 'retry' | 'disable-market-plugins' | 'view-logs' | 'quit'
 
 /** State the built-in shell page renders. */
 export type ShellPageState =
   | { readonly status: 'starting' }
-  | { readonly status: 'failed'; readonly message: string; readonly logTail: readonly string[] }
+  | { readonly status: 'failed'; readonly message: string; readonly logTail: readonly string[]; readonly canDisableMarketPlugins?: boolean }
 
 /** Escape text for safe interpolation into the shell page HTML. */
 function escapeHtml(text: string): string {
@@ -16,23 +16,21 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * Render the shell page shown before the Harness UI is reachable: a spinner
- * while starting, or the failure message with a log tail and recovery actions
- * (retry / view logs / quit) wired through `window.dshDesktop.shellAction`.
+ * Render the shell page shown before the Harness UI is reachable.
  * @param state - which variant to render.
- * @param version - the desktop shell version shown in the footer (the page is
- * the only version surface available before the Harness UI loads).
+ * @param version - the desktop shell version shown in the footer.
  * @returns a self-contained HTML document; no network references.
  */
 export function renderShellPage(state: ShellPageState, version: string): string {
   const body = state.status === 'starting'
     ? `<div class="spinner" aria-label="starting"></div>
-       <p>Starting DeepSeek Harness…</p>`
+       <p>Starting DeepSeek Harness...</p>`
     : `<h1>Harness failed to start</h1>
        <p class="message">${escapeHtml(state.message)}</p>
        ${state.logTail.length > 0 ? `<pre>${escapeHtml(state.logTail.join('\n'))}</pre>` : ''}
        <div class="actions">
          <button data-action="retry">Retry</button>
+         ${state.canDisableMarketPlugins ? '<button data-action="disable-market-plugins">Disable Market Plugins</button>' : ''}
          <button data-action="view-logs">View Logs</button>
          <button data-action="quit">Quit</button>
        </div>`
@@ -47,7 +45,7 @@ export function renderShellPage(state: ShellPageState, version: string): string 
   main { max-width: 640px; padding: 32px; text-align: center; }
   pre { text-align: left; background: #101216; padding: 12px; border-radius: 6px; overflow: auto; max-height: 240px; font-size: 12px; }
   .message { color: #f0a3a3; }
-  .actions { display: flex; gap: 12px; justify-content: center; margin-top: 16px; }
+  .actions { display: flex; gap: 12px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
   button { background: #2f6fed; color: #fff; border: 0; border-radius: 6px; padding: 8px 20px; font-size: 14px; cursor: pointer; }
   button:hover { background: #255bc4; }
   .spinner { width: 32px; height: 32px; margin: 0 auto 16px; border: 3px solid #3a3f47; border-top-color: #2f6fed; border-radius: 50%; animation: spin 0.9s linear infinite; }

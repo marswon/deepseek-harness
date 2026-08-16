@@ -1,5 +1,6 @@
 import { app, ipcMain, shell } from 'electron'
 import { existsSync } from 'node:fs'
+import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { HarnessLog } from './harness-log.ts'
@@ -46,6 +47,7 @@ const harness = new HarnessProcess({
       status: 'failed',
       message: `The Harness process exited unexpectedly (code ${String(code)}).`,
       logTail: log.recentLines(),
+      canDisableMarketPlugins: process.platform === 'win32' && code === 3221226505,
     })
   },
 })
@@ -89,10 +91,36 @@ async function restartHarness(): Promise<void> {
   await startHarness()
 }
 
+const INBOX_PROFILE_BUNDLES = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless'])
+
+/** Remove community profile dependencies after a native plugin crash, preserving in-box bundles. */
+async function disableMarketPlugins(): Promise<string[]> {
+  const manifestFile = join(paths.dshHome, 'profiles', 'web', 'package.json')
+  const manifest = JSON.parse(await readFile(manifestFile, 'utf8')) as { dependencies?: Record<string, string>; dsh?: { profile?: { bundles?: string[] } } }
+  const dependencies = manifest.dependencies ?? {}
+  const removed = Object.keys(dependencies).filter(name => !INBOX_PROFILE_BUNDLES.has(name))
+  if (removed.length === 0) return removed
+  await writeFile(join(paths.logDir, `web-profile-before-recovery-${Date.now()}.json`), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+  manifest.dependencies = Object.fromEntries(Object.entries(dependencies).filter(([name]) => INBOX_PROFILE_BUNDLES.has(name)))
+  if (Array.isArray(manifest.dsh?.profile?.bundles)) {
+    manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => INBOX_PROFILE_BUNDLES.has(name))
+  }
+  await writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+  return removed
+}
+
 function handleShellAction(action: ShellAction): void {
   switch (action) {
     case 'retry':
       void restartHarness()
+      return
+    case 'disable-market-plugins':
+      void disableMarketPlugins().then((removed) => {
+        log.write(`disabled market plugins after native crash: ${removed.join(', ') || 'none'}`)
+        void restartHarness()
+      }).catch((error: unknown) => {
+        log.write(`failed to disable market plugins: ${error instanceof Error ? error.message : String(error)}`)
+      })
       return
     case 'view-logs':
       void shell.openPath(paths.logFile)
