@@ -28,6 +28,12 @@
   Pop $0
   nsExec::Exec `"$SYSDIR\cmd.exe" /C taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
+  # Older releases launched Node from $INSTDIR. Kill every remaining process
+  # loaded from that directory, but never use an empty root as a path prefix.
+  ${if} $INSTDIR != ""
+    nsExec::Exec `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "$$root = '$INSTDIR'; Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -and $$_.ExecutablePath.StartsWith($$root, [System.StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
+    Pop $0
+  ${endIf}
   # taskkill returning does not guarantee that Windows has released every
   # Electron child handle. Poll the exact image name before replacing files.
   StrCpy $0 0
