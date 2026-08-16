@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
   "description": "Desktop shell for DeepSeek Harness: Electron main process supervising a local dsh web child process",
-  "version": "0.1.0-rc.23",
+  "version": "0.1.0-rc.24",
   "author": {
     "name": "DeepSeek Harness",
     "email": "opensource@deepseek.com"

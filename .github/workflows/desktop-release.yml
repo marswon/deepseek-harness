@@ -34,15 +34,9 @@ jobs:
           - target: mac-arm64
             runner: macos-14
             script: package:mac:arm64
-          - target: mac-x64
-            runner: macos-13
-            script: package:mac:x64
           - target: win-x64
             runner: windows-2025
             script: package:win
-          - target: linux-x64
-            runner: ubuntu-24.04
-            script: package:linux
     steps:
       - uses: actions/checkout@v6
         with:
@@ -82,3 +76,22 @@ jobs:
           name: dsh-desktop-${{ matrix.target }}
           path: apps/desktop/release/
           retention-days: 14
+
+  release:
+    name: Publish desktop release
+    if: ${{ github.event_name == 'push' }}
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dsh-desktop-*
+          path: release-assets
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          prerelease: true
+          files: release-assets/*
