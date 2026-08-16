@@ -108,7 +108,7 @@ import {
   hasApiRemoteSubagentOwner,
   inspectApiRemoteSession,
 } from '@deepseek-ai/dsh-api-remotes'
-import { canOpenNativePath, openNativePath, openNativeTextFile } from './native-path-opener.ts'
+import { canOpenNativePath, canRevealNativePath, openNativePath, openNativeTextFile, revealNativePath } from './native-path-opener.ts'
 
 /** Page size when history is called without maxMessages. */
 const DEFAULT_MAX_MESSAGES = 50
@@ -653,6 +653,8 @@ export interface ApiProxyDefaults {
   cwd: string
   /** Native open-with-default-application; injectable for carrier tests. */
   openPath?: (path: string, signal: AbortSignal) => Promise<void>
+  /** Native file-manager reveal; injectable for carrier tests. */
+  revealPath?: (path: string, signal: AbortSignal) => Promise<void>
   /** Native text-editor handoff; injectable for settings-document tests. */
   openTextFile?: (path: string, signal: AbortSignal) => Promise<void>
   /** Validated DEFLATE level for session-log ZIP entries; defaults to 6. */
@@ -664,7 +666,9 @@ export interface ApiProxyDefaults {
    * `hasDocument` capability the preset roster reports, and the switch
    * between opening a preset directory and answering its path as text.
    * Absent, an injected `openPath` counts as openable and everything else
-   * falls back to platform detection ({@link canOpenNativePath}).
+   * falls back to platform detection ({@link canOpenNativePath}). This one
+   * knob also governs `canRevealPath`: reveal needs the same desktop
+   * presence, so a single override answers both.
    */
   canOpenPath?: () => boolean
 }
@@ -1913,11 +1917,27 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     return openTarget(request, path, signal, open)
   }
 
+  /** Reveal one Host-resolved path in the native file manager. */
+  function revealPath(
+    request: RpcRequest<unknown>, path: string, signal: AbortSignal,
+  ): Promise<RpcResponse<{ opened: true }>> {
+    const reveal = defaults.revealPath
+      ?? ((target: string, revealSignal: AbortSignal) => revealNativePath(target, revealSignal))
+    return openTarget(request, path, signal, reveal)
+  }
+
   /** Whether this deployment can hand a path to a native opener at all. */
   function canOpenPaths(): boolean {
     if (defaults.canOpenPath !== undefined) return defaults.canOpenPath()
     // An injected opener is by definition usable; otherwise ask the platform.
     return defaults.openPath !== undefined || canOpenNativePath()
+  }
+
+  /** Whether this deployment can hand a path to a native file manager at all. */
+  function canRevealPaths(): boolean {
+    if (defaults.canOpenPath !== undefined) return defaults.canOpenPath()
+    // An injected revealer is by definition usable; otherwise ask the platform.
+    return defaults.revealPath !== undefined || canRevealNativePath()
   }
 
   /** Missing-service report shared by the credentials domain. */
@@ -2935,6 +2955,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           model: selection.model,
           attachedSessions: ctx.agents.list().length,
           canOpenPath: canOpenPaths(),
+          canRevealPath: canRevealPaths(),
         }))
       },
 
@@ -3007,6 +3028,10 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
 
       async openPath(request, signal) {
         return openPath(request, request.payload.path, signal)
+      },
+
+      async revealPath(request, signal) {
+        return revealPath(request, request.payload.path, signal)
       },
     },
 

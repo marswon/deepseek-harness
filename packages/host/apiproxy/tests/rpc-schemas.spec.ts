@@ -18,6 +18,8 @@ import {
   hostCreateDirectoryRequestSchema, hostCreateDirectoryValueSchema,
   hostDescribeRequestSchema, hostDescribeValueSchema,
   hostListDirectoryRequestSchema, hostListDirectoryValueSchema,
+  hostOpenPathRequestSchema, hostOpenPathValueSchema,
+  hostRevealPathRequestSchema, hostRevealPathValueSchema,
 } from '../src/api/host.schema.ts'
 import {
   workspaceArchiveSessionRequestSchema, workspaceArchiveSessionValueSchema,
@@ -312,15 +314,24 @@ describe('host domain schemas', () => {
   it('validates describe request/value', () => {
     expect(hostDescribeRequestSchema.parse({})).toEqual({})
     const value = hostDescribeValueSchema.parse({
-      version: '1', cwd: '/x', provider: 'p', model: 'm', attachedSessions: 2, canOpenPath: true,
+      version: '1', cwd: '/x', provider: 'p', model: 'm', attachedSessions: 2, canOpenPath: true, canRevealPath: true,
     })
-    expect(value).toMatchObject({ provider: 'p', model: 'm', attachedSessions: 2, canOpenPath: true })
+    expect(value).toMatchObject({ provider: 'p', model: 'm', attachedSessions: 2, canOpenPath: true, canRevealPath: true })
     expect(hostDescribeValueSchema.parse({
-      version: '1', cwd: '/x', attachedSessions: 0, canOpenPath: false,
+      version: '1', cwd: '/x', attachedSessions: 0, canOpenPath: false, canRevealPath: false,
     }).provider).toBeUndefined()
     expect(() => hostDescribeValueSchema.parse({
       version: '1', cwd: '/x', attachedSessions: 0,
     })).toThrow()
+  })
+
+  it('validates the open/reveal path payloads and values', () => {
+    expect(hostOpenPathRequestSchema.parse({ path: '/x' })).toEqual({ path: '/x' })
+    expect(hostRevealPathRequestSchema.parse({ path: '/x' })).toEqual({ path: '/x' })
+    expect(hostOpenPathValueSchema.parse({ opened: true })).toEqual({ opened: true })
+    expect(hostRevealPathValueSchema.parse({ opened: true })).toEqual({ opened: true })
+    expect(() => hostRevealPathRequestSchema.parse({ path: '' })).toThrow()
+    expect(() => hostRevealPathValueSchema.parse({ opened: false })).toThrow()
   })
 
   it('validates the browse listing/creation payloads', () => {

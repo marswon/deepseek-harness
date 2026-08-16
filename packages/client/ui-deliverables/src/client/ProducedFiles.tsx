@@ -132,7 +132,7 @@ export function ProducedFiles({
         ))}
         {hidden > 0 && <span className={css.more}>{moreLabel(t, hidden)}</span>}
       </div>
-      {hidden > 0 && canOpenPath && (
+      {paths.length > 0 && canOpenPath && (
         <button type="button" className={css.showFolder} onClick={() => { openFile('.') }}>
           {t('produced.showInFolder')}
         </button>

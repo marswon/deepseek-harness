@@ -18,7 +18,7 @@ Status: implemented
 
 **路径链接读得出是链接。** 静止状态下就带下划线，而不只在悬停时。这是本次改动中更小的那一半，却是修复中更大的那一半。
 
-**打开仍然是 Host 的职责，并且优先选用默认浏览器。** `host.openPath` 把路径交给操作系统，得到的是真实浏览器里的一份 `file://` 文档：页面能力完整，且够不到 `/api`——因为 `file://` 文档与它并不同源。在所报告的那份产物上实测：`localStorage` 可用、主题切换生效、tabs 可切换，而对 API 的 `fetch` 失败。对浏览器能渲染的文档——`.html`、`.htm`、`.xhtml`、`.svg`——平台能够确定默认浏览器时，打开器解析的是默认**浏览器**而非该类型的默认应用，因为把 `.html` 绑给编辑器的开发者，否则点开一个产出的页面得到的会是源码。macOS 读取 LaunchServices 的 `https` 处理程序，桌面 Linux 读取 `$BROWSER`；无法确定浏览器时，两者都会回退到默认应用。Windows 使用其注册的文件关联，WSL 则先转换路径，再使用同一 Windows 交接。存在隐藏文件时，**在文件夹中显示**会把 `.` 经由同一 owner `openFile` 传递；它只在 loopback 页面的当前 `host.describe.canOpenPath` 允许原生打开时出现。其他部署会省略它；桌面探测误报时可配置 `nativeOpen: false`。
+**打开仍然是 Host 的职责，并且优先选用默认浏览器。** `host.openPath` 把路径交给操作系统，得到的是真实浏览器里的一份 `file://` 文档：页面能力完整，且够不到 `/api`——因为 `file://` 文档与它并不同源。在所报告的那份产物上实测：`localStorage` 可用、主题切换生效、tabs 可切换，而对 API 的 `fetch` 失败。对浏览器能渲染的文档——`.html`、`.htm`、`.xhtml`、`.svg`——平台能够确定默认浏览器时，打开器解析的是默认**浏览器**而非该类型的默认应用，因为把 `.html` 绑给编辑器的开发者，否则点开一个产出的页面得到的会是源码。macOS 读取 LaunchServices 的 `https` 处理程序，桌面 Linux 读取 `$BROWSER`；无法确定浏览器时，两者都会回退到默认应用。Windows 使用其注册的文件关联，WSL 则先转换路径，再使用同一 Windows 交接。只要该轮产出了文件，**在文件夹中显示**就会把 `.` 经由同一 owner `openFile` 传递；它只在 loopback 页面的当前 `host.describe.canOpenPath` 允许原生打开时出现。其他部署会省略它；桌面探测误报时可配置 `nativeOpen: false`。
 
 **以 HTTP 提供工作区文件不在范围内，非本机客户端亦然。** 由 harness 自己提供文件——与 `/api` 同源、置于 `CSP: sandbox` 之后、或交给一个以自身端口给所服务文档独立源的第二监听器——随产品范围一并否决：不为「浏览器不在 Host 机器上」的场景提供预览，因此 Host 打开器完整回答受支持的场景，而那套 HTTP 机制只会回答不受支持的那个。
 

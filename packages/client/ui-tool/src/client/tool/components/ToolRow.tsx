@@ -20,7 +20,7 @@
 import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import clsx from 'clsx'
 import {
-  CodeBlock, DiffBlock, DisclosureRow, IconInspectOutline12, ReadBlock, SearchBlock, StateDot, TerminalBlock, WebBlock,
+  CodeBlock, DiffBlock, DisclosureRow, IconFolderOpen16, IconInspectOutline12, ReadBlock, SearchBlock, StateDot, TerminalBlock, WebBlock,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WebBlockProps } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -95,6 +95,12 @@ export interface ToolRowProps {
   /** Open the path with the host OS default application (already cwd-resolved). */
   onOpenFile?: ((path: string) => void) | undefined
   /**
+   * Reveal the path in the host OS file manager (already cwd-resolved); with
+   * filePath set, a folder icon button rides beside the open link. Absent =
+   * no reveal affordance.
+   */
+  onRevealFile?: ((path: string) => void) | undefined
+  /**
    * Jump to this call in the trajectory view: a hover-revealed Inspect pill
    * over the expanded body. Absent = no affordance.
    */
@@ -144,6 +150,7 @@ export function ToolRow({
   state,
   filePath,
   onOpenFile,
+  onRevealFile,
   inspect,
 }: ToolRowProps) {
   const [expanded, setExpanded] = useState(false)
@@ -177,6 +184,10 @@ export function ToolRow({
   const openFile = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
     if (filePath !== undefined) onOpenFile?.(filePath)
+  }
+  const revealFile = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    if (filePath !== undefined) onRevealFile?.(filePath)
   }
   // Keep Enter/Space on the focused path link from bubbling to the row's
   // keydown handler, which would preventDefault() the key and toggle expand
@@ -226,6 +237,18 @@ export function ToolRow({
               >
                 {summaryText}
               </span>
+            )}
+            {fileLink && onRevealFile !== undefined && (
+              <button
+                type="button"
+                className={css.revealButton}
+                aria-label={t('reveal.inFolder')}
+                title={t('reveal.inFolder')}
+                onClick={revealFile}
+                onKeyDown={fileLinkKeyDown}
+              >
+                <IconFolderOpen16 size={14} />
+              </button>
             )}
             {suffix !== null && <span className={css.summarySuffix}>{suffix}</span>}
           </>

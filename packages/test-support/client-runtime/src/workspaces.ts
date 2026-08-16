@@ -98,6 +98,15 @@ export class TestWorkspaces implements IWorkspaces {
   }
 
   /**
+   * Reveal a path in the host OS file manager (recorded; default no-op).
+   * @param path - host-resolvable path.
+   */
+  async revealPath(path: string): Promise<void> {
+    this.calls.push({ method: 'revealPath', args: [path] })
+    await (this.stubs.get('revealPath')?.(path) as Promise<void> | undefined)
+  }
+
+  /**
    * Directory picker (recorded). The default cancels (null); stub to select.
    * @returns the picked path, or null.
    */

@@ -40,20 +40,16 @@
           - textbox "显示名称 1":
             - /placeholder: 显示名称
             - text: DeepSeek-V4-Pro
-          - button "容量 1":
-            - img
-          - button "删除模型 1":
-            - img
+          - button "容量 1"
+          - button "删除模型 1"
           - textbox "模型 ID 2":
             - /placeholder: 模型 ID
             - text: private-preview
           - textbox "显示名称 2":
             - /placeholder: 显示名称
             - text: Private Preview
-          - button "容量 2" [expanded]:
-            - img
-          - button "删除模型 2":
-            - img
+          - button "容量 2" [expanded]
+          - button "删除模型 2"
           - text: 上下文窗口
           - textbox "上下文窗口 2":
             - /placeholder: 1M

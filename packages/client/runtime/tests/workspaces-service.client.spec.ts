@@ -360,6 +360,17 @@ describe('WorkspaceRuntime', () => {
     await expect(workspaces.openPath('/missing')).rejects.toThrow(/path open failed/)
   })
 
+  it('reveals a filesystem path through the host without local state', async () => {
+    const ctx = new Context()
+    const api = new FakeApiClient()
+    const sessions = new SessionRuntime(ctx, api, fakeRemote())
+    const workspaces = new WorkspaceRuntime(ctx, api, sessions)
+    await expect(workspaces.revealPath('/w/alpha/a.ts')).resolves.toBeUndefined()
+    expect(api.callsOf('host.revealPath')).toEqual([{ path: '/w/alpha/a.ts' }])
+    api.onRevealPath = () => Promise.resolve(err({ code: 'internal', message: 'boom', details: {} }))
+    await expect(workspaces.revealPath('/missing')).rejects.toThrow(/path reveal failed/)
+  })
+
   it('deletes a Workspace or preserves it when the Host rejects deletion', async () => {
     const ctx = new Context()
     const api = new FakeApiClient()

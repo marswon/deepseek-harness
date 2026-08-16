@@ -36,6 +36,12 @@ export interface ToolCallOwnerProps {
   cwd?: string | undefined
   /** Open a Tool argument path through the Host. */
   openFile: (path: string) => void
+  /**
+   * Reveal a Tool argument path in the Host file manager. Absent unless the
+   * deployment advertises the reveal capability; the row then renders no
+   * reveal affordance.
+   */
+  revealFile?: ((path: string) => void) | undefined
   /** Inspect this call in the trajectory view when available. */
   inspect?: (() => void) | undefined
 }

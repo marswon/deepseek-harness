@@ -59,6 +59,13 @@ export interface IWorkspaces {
    */
   openPath(path: string): Promise<void>
   /**
+   * Reveal a filesystem path in the Host operating system's file manager
+   * (Finder/Explorer selection), as opposed to {@link IWorkspaces.openPath}'s
+   * default-application handoff.
+   * @param path - absolute or host-resolvable path.
+   */
+  revealPath(path: string): Promise<void>
+  /**
    * Rename a Workspace.
    * @param workspaceId - target workspace.
    * @param title - the new display title.

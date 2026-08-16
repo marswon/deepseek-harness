@@ -109,13 +109,16 @@ export class FakeApiClient implements IApiClient {
     cwd: string
     attachedSessions: number
     canOpenPath: boolean
+    canRevealPath: boolean
   }>> =
     () => Promise.resolve(ok({
-      version: '0-fake', cwd: '/f', attachedSessions: 0, canOpenPath: true,
+      version: '0-fake', cwd: '/f', attachedSessions: 0, canOpenPath: true, canRevealPath: true,
     }))
   onPickDirectory: (payload: unknown) => Promise<RpcResponse<{ path: string | null }>> =
     () => Promise.resolve(ok({ path: null }))
   onOpenPath: (payload: unknown) => Promise<RpcResponse<{ opened: true }>> =
+    () => Promise.resolve(ok({ opened: true as const }))
+  onRevealPath: (payload: unknown) => Promise<RpcResponse<{ opened: true }>> =
     () => Promise.resolve(ok({ opened: true as const }))
 
   onListDirectory: (payload: unknown) => Promise<RpcResponse<{
@@ -180,6 +183,7 @@ export class FakeApiClient implements IApiClient {
     listDirectory: (payload: unknown) => this.record('host.listDirectory', payload, this.onListDirectory(payload)),
     createDirectory: (payload: unknown) => this.record('host.createDirectory', payload, this.onCreateDirectory(payload)),
     openPath: (payload: unknown) => this.record('host.openPath', payload, this.onOpenPath(payload)),
+    revealPath: (payload: unknown) => this.record('host.revealPath', payload, this.onRevealPath(payload)),
   }
 
   // The archive-set field defaults at the binding below so list stubs keep

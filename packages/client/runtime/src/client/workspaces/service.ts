@@ -250,6 +250,17 @@ export class WorkspaceRuntime implements IWorkspaces {
   }
 
   /**
+   * Reveal a filesystem path in the Host operating system's file manager.
+   * @param path - absolute or host-resolvable path.
+   */
+  async revealPath(path: string): Promise<void> {
+    const response = await this.api.host.revealPath({ path })
+    if (!response.result.ok) {
+      throw new Error(`path reveal failed: ${response.result.error.message}`)
+    }
+  }
+
+  /**
    * Rename a Workspace.
    * @param workspaceId - target workspace.
    * @param title - new display title (trimmed non-empty by the Host).

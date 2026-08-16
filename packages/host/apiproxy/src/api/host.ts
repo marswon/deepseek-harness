@@ -42,6 +42,7 @@ export interface HostApi {
    * no explicit default (the adapter falls back internally);
    * attachedSessions = count of currently attached sessions (those with a live agent);
    * canOpenPath = whether this deployment can hand a path to a user-visible native desktop.
+   * canRevealPath = the same fact for the file-manager reveal gesture.
    */
   describe(request: RpcRequest<{}>): Promise<RpcResponse<{
     version: string
@@ -50,6 +51,7 @@ export interface HostApi {
     model?: string
     attachedSessions: number
     canOpenPath: boolean
+    canRevealPath: boolean
   }>>
 
   /**
@@ -90,6 +92,18 @@ export interface HostApi {
    * `/api` request.
    */
   openPath(
+    request: RpcRequest<{ path: string }>,
+    signal: AbortSignal,
+  ): Promise<RpcResponse<{ opened: true }>>
+
+  /**
+   * Select a filesystem path in the operating system's file manager (Finder
+   * `open -R`, Explorer `/select,`; desktop Linux opens the containing
+   * directory), as opposed to {@link HostApi.openPath}'s default-application
+   * handoff. The browser carrier's prefix-wide trust fence covers this
+   * privileged method like every other `/api` request.
+   */
+  revealPath(
     request: RpcRequest<{ path: string }>,
     signal: AbortSignal,
   ): Promise<RpcResponse<{ opened: true }>>

@@ -17,7 +17,10 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { DiscoveredModelView, IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
-import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  Button, IconChevronDownOutline14, IconChevronRightOutline14, IconPlusOutline16, IconTrashOutline16,
+  Input, Modal,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import { formatCapacity, parseCapacity } from './DeepSeekModelsEditor.tsx'
 import type { DeepSeekModelDraft } from './DeepSeekModelsEditor.tsx'
 import { messageOf } from './store.ts'
@@ -87,30 +90,6 @@ export interface ModelListEditorProps {
   t: (key: keyof typeof en) => string
   /** Disable every control (read-only deployment or a pending write). */
   disabled: boolean
-}
-
-/** Disclosure chevron; rotates to point down while its row is open. */
-function IconChevron({ open }: { open: boolean }): ReactNode {
-  return (
-    <svg
-      width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden
-      style={{ transform: open ? 'rotate(90deg)' : undefined, transition: 'transform 120ms ease' }}
-    >
-      <path d="M6 3.5L10.5 8L6 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-/** Removal glyph for one model row. */
-function IconTrash(): ReactNode {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path
-        d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9a1 1 0 001 .9h4.6a1 1 0 001-.9L12 4M6.5 6.8v4.4M9.5 6.8v4.4"
-        stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"
-      />
-    </svg>
-  )
 }
 
 /** The two token counts edited as K/M-suffixed text behind a row's disclosure. */
@@ -308,18 +287,20 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
         </div>
         {props.overridden === true && props.onReset !== undefined
           ? (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               className={styles['linkButton']}
               disabled={disabled}
               onClick={props.onReset}
             >
               {t('resetModels')}
-            </button>
+            </Button>
           )
           : null}
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           className={styles['linkButton']}
           disabled={disabled || busy || !askable || props.probeBlocked !== undefined}
           title={props.probeBlocked !== undefined
@@ -328,14 +309,13 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
           onClick={() => { void fetchModels() }}
         >
           {busy ? t('fetching') : t('fetchModels')}
-        </button>
+        </Button>
       </div>
       {models.length === 0 ? <p className={styles['modelEmpty']}>{t('modelsEmpty')}</p> : null}
       {models.map((model, index) => (
         <div key={index} className={styles['modelEntry']}>
           <div className={styles['modelRow']}>
-            <input
-              className={styles['input']}
+            <Input
               type="text"
               value={textOf(model, 'id')}
               placeholder={t('modelId')}
@@ -343,8 +323,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               disabled={disabled}
               onChange={(event) => { patch(index, { id: event.target.value }) }}
             />
-            <input
-              className={styles['input']}
+            <Input
               type="text"
               value={textOf(model, 'name')}
               placeholder={t('modelName')}
@@ -360,7 +339,9 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               title={t('modelAdvanced')}
               onClick={() => { toggleExpanded(index) }}
             >
-              <IconChevron open={expanded.has(index)} />
+              <span className={styles['iconGlyph']} aria-hidden="true">
+                {expanded.has(index) ? <IconChevronDownOutline14 /> : <IconChevronRightOutline14 />}
+              </span>
             </button>
             <button
               type="button"
@@ -385,7 +366,9 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                 setEditing(current => reindexOnRemove(current, index))
               }}
             >
-              <IconTrash />
+              <span className={styles['iconGlyph']} aria-hidden="true">
+                <IconTrashOutline16 size={14} />
+              </span>
             </button>
           </div>
           {expanded.has(index)
@@ -393,8 +376,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               <div className={styles['modelAdvanced']}>
                 <label className={styles['modelField']}>
                   <span className={styles['modelFieldLabel']}>{t('modelContextWindow')}</span>
-                  <input
-                    className={styles['input']}
+                  <Input
                     type="text"
                     inputMode="numeric"
                     value={capacityText(model, index, 'contextWindow')}
@@ -406,8 +388,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                 </label>
                 <label className={styles['modelField']}>
                   <span className={styles['modelFieldLabel']}>{t('modelMaxTokens')}</span>
-                  <input
-                    className={styles['input']}
+                  <Input
                     type="text"
                     inputMode="numeric"
                     value={capacityText(model, index, 'maxTokens')}
@@ -422,14 +403,16 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
             : null}
         </div>
       ))}
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="sm"
         className={styles['addModelButton']}
+        icon={<IconPlusOutline16 size={14} />}
         disabled={disabled}
         onClick={() => { onChange([...models, { id: '' }]) }}
       >
         {t('addModel')}
-      </button>
+      </Button>
       {failure !== undefined ? <p className={styles['error']}>{failure}</p> : null}
       <Modal
         open={candidates !== undefined}
@@ -451,6 +434,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               <label className={styles['candidateLabel']}>
                 <input
                   type="checkbox"
+                  className={styles['candidateCheck']}
                   checked={picked.has(candidate.id)}
                   onChange={() => { toggle(candidate.id) }}
                 />

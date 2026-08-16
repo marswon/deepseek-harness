@@ -111,8 +111,9 @@ export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, t }: 
   group: GroupNode
   onToggle: () => void
   onCreate: () => void
-  /** Real-Workspace actions; absent for the ungrouped bucket (no menu shown). */
-  actions?: { rename: () => void; delete: () => void } | undefined
+  /** Real-Workspace actions; absent for the ungrouped bucket (no menu shown).
+   * `reveal` is present only when the Host can open paths natively. */
+  actions?: { rename: () => void; delete: () => void; reveal?: (() => void) | undefined } | undefined
   /** Present only for real Workspace rows in the grouped view. */
   drag?: WorkspaceRowDragProps | undefined
   t: RowTranslate
@@ -123,6 +124,9 @@ export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, t }: 
   const active = group.expanded && group.containsCurrent
   const [menuOpen, setMenuOpen] = useState(false)
   const workspaceMenuItems = [
+    ...(actions?.reveal === undefined
+      ? []
+      : [{ id: 'reveal', label: t('menu.showInFolder'), icon: <IconFolderOpen16 /> }]),
     { id: 'rename', label: t('rename'), icon: <IconEditOutline16 /> },
     { id: 'delete', label: t('delete.workspace'), icon: <IconTrashOutline16 />, danger: true },
   ]
@@ -161,10 +165,9 @@ export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, t }: 
               setMenuOpen(false)
               // Unknown ids leave before the dispatch: a future menu row must
               // not inherit the destructive branch as an else fallback.
-              /* v8 ignore next -- workspaceMenuItems carries exactly these two rows today. */
-              if (id !== 'rename' && id !== 'delete') return
-              if (id === 'rename') actions.rename()
-              else actions.delete()
+              if (id === 'reveal') actions.reveal?.()
+              else if (id === 'rename') actions.rename()
+              else if (id === 'delete') actions.delete()
             }}
             portal
             closeOnPointerLeave

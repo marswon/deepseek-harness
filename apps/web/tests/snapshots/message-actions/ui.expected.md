@@ -25,16 +25,20 @@
 - button "Branch into a new conversation" [disabled]:
   - img
 - text: Available only on the last message of a completed turn 7/25 {{clock}} Ran for {{duration}} TTFT {{duration}} {{throughput}} tok/s
-- button "Read a.txt":
+- button "Read a.txt Show in folder":
   - img
   - img
   - text: Read
   - button "a.txt"
-- button "Read b.txt":
+  - button "Show in folder":
+    - img
+- button "Read b.txt Show in folder":
   - img
   - img
   - text: Read
   - button "b.txt"
+  - button "Show in folder":
+    - img
 - button "Think Both files have been read. a.txt contains \"alpha\" and b.txt contains \"beta\". I'll now reply with DONE as instructed.":
   - img
   - img

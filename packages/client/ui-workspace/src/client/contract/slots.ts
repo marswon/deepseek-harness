@@ -27,6 +27,7 @@ import type { HostObservable, PropsLocale, PropsRenderSlots, PropsRuntime, Props
 // runtime shares below.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { HostDescription, HostDescriptionSource } from '@deepseek-ai/dsh-client-connection/client'
 import type {
   SessionId, SessionSearchResultItem, WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -90,6 +91,10 @@ export type DirectoryPickingHooks = {
  * browsing region drives.
  */
 export type WorkspaceBrowserInjected = DirectoryPickingInjected & {
+  /** Whether the page itself is connected over loopback (native file-manager open gate). */
+  isLoopback: boolean
+  /** Open a Workspace directory in the OS file manager through the Host opener. */
+  openWorkspacePath: (path: string) => void
   /**
    * Start a New Session in a Workspace: reuse-or-create its blank session and
    * open it; without an explicit workspace, inherit the current Session
@@ -135,6 +140,16 @@ export type WorkspaceBrowserInjected = DirectoryPickingInjected & {
   insertSessionBefore: (workspaceId: WorkspaceId, sessionId: SessionId, beforeSessionId?: SessionId) => Promise<void>
   /** Adopt a picked host directory as a real Workspace before targeting a Session. */
   createWorkspace: (input: { path: string }) => Promise<WorkspaceView>
+  hooks: DirectoryPickingInjected['hooks'] & {
+    /** Current generation's Host description (carries the native open capability). */
+    hostDescription: HostDescriptionSource
+  }
+}
+
+/** Component-side Host capability share: the bound description selector hook. */
+export type HostCapabilityHooks = {
+  /** Selector hook over the current Host description. */
+  useHostDescription: SnapshotSelectorHook<HostDescription | undefined>
 }
 
 /** Full browser props: shell owner share + viewing store + injected actions + the locale seat. */
@@ -144,6 +159,7 @@ export type WorkspaceBrowserProps =
   & PropsStore<ReturnType<typeof createWorkspaceViewStore>>
   & Omit<WorkspaceBrowserInjected, 'hooks'>
   & DirectoryPickingHooks
+  & HostCapabilityHooks
   & PropsLocale<'workspace'>
 
 /**

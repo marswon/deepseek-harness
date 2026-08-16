@@ -16,7 +16,7 @@ vi.mock('node:child_process', () => ({ execFile: execFileMock }))
 
 import { release as osRelease } from 'node:os'
 import { describe, expect, it, vi } from 'vitest'
-import { canOpenNativePath, openNativePath, openNativeTextFile, type PathOpenerRunner } from '../src/native-path-opener.ts'
+import { canOpenNativePath, canRevealNativePath, openNativePath, openNativeTextFile, revealNativePath, type PathOpenerRunner } from '../src/native-path-opener.ts'
 
 const signal = () => new AbortController().signal
 
@@ -165,6 +165,86 @@ describe('native path opener', () => {
       message: 'open failed', cause: commandError, code: 1,
       stdout: 'partial output', stderr: 'failure details',
     })
+  })
+})
+
+describe('native path reveal', () => {
+  it('reveals with macOS open -R, skipping the browser fast path for documents', async () => {
+    const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+    await revealNativePath('/Users/test/page.html', signal(), { platform: 'darwin', run })
+    // No LaunchServices read at all: reveal never consults the browser.
+    expect(run.mock.calls).toEqual([
+      ['open', ['-R', '/Users/test/page.html'], expect.any(AbortSignal)],
+    ])
+  })
+
+  it('reveals with Windows explorer /select,', async () => {
+    const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+    await revealNativePath('C:\\work\\file.txt', signal(), { platform: 'win32', run })
+    expect(run).toHaveBeenCalledWith('explorer.exe', ['/select,C:\\work\\file.txt'], expect.any(AbortSignal))
+  })
+
+  it('tolerates explorer.exe exiting 1 on a successful selection', async () => {
+    const run = vi.fn<PathOpenerRunner>(async () => {
+      throw Object.assign(new Error('Command failed: explorer.exe'), { code: 1 })
+    })
+    await expect(revealNativePath('C:\\work\\file.txt', signal(), { platform: 'win32', run })).resolves.toBeUndefined()
+  })
+
+  it('rethrows every explorer.exe failure but the benign exit code', async () => {
+    const denied = Object.assign(new Error('spawn failed'), { code: 2 })
+    const run = vi.fn<PathOpenerRunner>(async () => { throw denied })
+    await expect(revealNativePath('C:\\work\\file.txt', signal(), { platform: 'win32', run }))
+      .rejects.toBe(denied)
+    const stringCode = vi.fn<PathOpenerRunner>(async () => {
+      throw Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' })
+    })
+    await expect(revealNativePath('C:\\work\\file.txt', signal(), { platform: 'win32', run: stringCode }))
+      .rejects.toMatchObject({ code: 'ENOENT' })
+    const plain = vi.fn<PathOpenerRunner>(async () => { throw new Error('aborted') })
+    await expect(revealNativePath('C:\\work\\file.txt', signal(), { platform: 'win32', run: plain }))
+      .rejects.toThrow('aborted')
+    // A non-Error rejection carries no code at all and likewise propagates.
+    // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- the non-Error rejection is the case under test.
+    const nonError = vi.fn<PathOpenerRunner>(async () => Promise.reject('gone'))
+    await expect(revealNativePath('C:\\work\\file.txt', signal(), { platform: 'win32', run: nonError }))
+      .rejects.toBe('gone')
+  })
+
+  it('translates a WSL path before revealing it in Windows Explorer', async () => {
+    const requestSignal = signal()
+    const run = vi.fn<PathOpenerRunner>(async command => command === 'wslpath'
+      ? { stdout: '\\\\wsl.localhost\\Ubuntu\\home\\test\\file.txt\r\n', stderr: '' }
+      : { stdout: '', stderr: '' })
+    await revealNativePath('/home/test/file.txt', requestSignal, {
+      platform: 'linux', osRelease: '5.15.153.1-microsoft-standard-WSL2', env: {}, run,
+    })
+    expect(run.mock.calls).toEqual([
+      ['wslpath', ['-w', '/home/test/file.txt'], requestSignal],
+      ['explorer.exe', ['/select,\\\\wsl.localhost\\Ubuntu\\home\\test\\file.txt'], requestSignal],
+    ])
+  })
+
+  it('opens the containing directory on desktop Linux', async () => {
+    const run = vi.fn<PathOpenerRunner>(async () => ({ stdout: '', stderr: '' }))
+    await revealNativePath('/tmp/work/file.txt', signal(), {
+      platform: 'linux', osRelease: '6.8.0-generic', env: {}, run,
+    })
+    expect(run).toHaveBeenCalledWith('xdg-open', ['/tmp/work'], expect.any(AbortSignal))
+  })
+
+  it('rejects unsupported platforms', async () => {
+    await expect(revealNativePath('/x', signal(), { platform: 'freebsd' as NodeJS.Platform }))
+      .rejects.toThrow('unsupported on freebsd')
+  })
+})
+
+describe('canRevealNativePath', () => {
+  it('shares canOpenNativePath\'s platform truths', () => {
+    expect(canRevealNativePath({ platform: 'darwin', env: {} })).toBe(true)
+    expect(canRevealNativePath({ platform: 'win32', env: {} })).toBe(true)
+    expect(canRevealNativePath({ platform: 'linux', osRelease: '6.8.0-generic', env: {} })).toBe(false)
+    expect(canRevealNativePath({ platform: 'freebsd', env: {} })).toBe(false)
   })
 })
 

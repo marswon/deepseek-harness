@@ -4,6 +4,7 @@ import { resolveSlotLabel, type BoundActions } from '@deepseek-ai/dsh-client-ui-
 import {
   resolveWorkspacePath, type ISessions, type SessionId,
 } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 // Type-only: the ctx.settingsScope Context merge. Cross-plugin collaboration
 // goes through the service, never a value import (client bundle purity gate).
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -117,6 +118,7 @@ export function apply(ctx: Context): void {
   const workspaces = ctx.workspaces
   const layout = ctx.layout
   const slots = ctx.slots
+  const connection = ctx.get('connection') as ConnectionHandle
 
   registerConversationNodes(ctx)
   registerChatNodeRenderers(ctx)
@@ -399,6 +401,17 @@ export function apply(ctx: Context): void {
             // app surfaces its own error dialog when the path is unusable.
           })
         },
+        // The reveal affordance exists only where the gesture can work: a
+        // loopback page whose current Host description reports canRevealPath.
+        revealFile: connection.isLoopback
+            && connection.hostDescription.getSnapshot()?.canRevealPath === true
+          ? (path) => {
+            const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd
+            void workspaces.revealPath(resolveWorkspacePath(cwd, path)).catch(() => {
+              // Same stance as openFile: the native side surfaces its own failure.
+            })
+          }
+          : undefined,
         loadOlder: () => { void scoped.loadOlder() },
         loadImage: attachment => conversation.resolveImage(sessionId, attachment),
         // Unregistered 'trajectory' id is safe: the tab ring falls back to

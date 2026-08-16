@@ -34,6 +34,12 @@ async function createRuntime(): Promise<SlotTestRuntime> {
   const locale = new LocaleRuntime(runtime.ctx)
   runtime.provide('locale', locale)
   runtime.slots.installLocale(locale)
+  // The browser entry's inject edge on the connection service: loopback off,
+  // no Host description — native file-manager actions stay hidden here.
+  runtime.provide('connection', {
+    isLoopback: false,
+    hostDescription: { getSnapshot: () => undefined, subscribe: () => () => {} },
+  })
   return runtime
 }
 

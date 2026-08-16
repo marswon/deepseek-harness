@@ -9,7 +9,7 @@
  */
 
 import { release as osRelease } from 'node:os'
-import { extname } from 'node:path'
+import { dirname, extname } from 'node:path'
 import { runNativeCommand, type NativeCommandRunner } from '@deepseek-ai/dsh-native-command'
 
 /** Testable command boundary; native implementations never invoke a shell. */
@@ -78,7 +78,7 @@ async function openInBrowser(
 }
 
 /** Native path-open intent; macOS distinguishes text editing from file association. */
-type PathOpenIntent = 'default' | 'text-editor'
+type PathOpenIntent = 'default' | 'text-editor' | 'reveal'
 
 /** PowerShell single-quoted literal (doubles embedded quotes). */
 function powershellLiteral(path: string): string {
@@ -97,6 +97,15 @@ function isWsl(internals: PathOpenerInternals): boolean {
   return (internals.osRelease ?? osRelease()).toLowerCase().includes('microsoft')
 }
 
+/** Translate a WSL path for the Windows desktop. */
+async function translateWslPath(path: string, signal: AbortSignal, run: PathOpenerRunner): Promise<string> {
+  const translated = await run('wslpath', ['-w', path], signal)
+  signal.throwIfAborted()
+  const windowsPath = translated.stdout.replace(/[\r\n]+$/, '')
+  if (windowsPath === '') throw new Error('wslpath returned no Windows path')
+  return windowsPath
+}
+
 /** Open one Windows-resolvable path through its registered desktop application. */
 async function openWindowsPath(path: string, signal: AbortSignal, run: PathOpenerRunner): Promise<void> {
   await run('powershell.exe', [
@@ -108,11 +117,23 @@ async function openWindowsPath(path: string, signal: AbortSignal, run: PathOpene
 
 /** Translate a WSL path before handing it to the Windows desktop. */
 async function openWslPath(path: string, signal: AbortSignal, run: PathOpenerRunner): Promise<void> {
-  const translated = await run('wslpath', ['-w', path], signal)
-  signal.throwIfAborted()
-  const windowsPath = translated.stdout.replace(/[\r\n]+$/, '')
-  if (windowsPath === '') throw new Error('wslpath returned no Windows path')
-  await openWindowsPath(windowsPath, signal, run)
+  await openWindowsPath(await translateWslPath(path, signal, run), signal, run)
+}
+
+/**
+ * Select one Windows-resolvable path in Explorer.
+ * Quirk: `explorer.exe /select,` exits with code 1 even when it selected the
+ * target, so exactly that numeric code is benign and every other rejection —
+ * including the string codes a process spawn failure carries — propagates.
+ */
+async function revealWindowsPath(path: string, signal: AbortSignal, run: PathOpenerRunner): Promise<void> {
+  try {
+    await run('explorer.exe', [`/select,${path}`], signal)
+  } catch (error: unknown) {
+    if (typeof error === 'object' && error !== null
+      && (error as { code?: unknown }).code === 1) return
+    throw error
+  }
 }
 
 /** Dispatch one shell-free platform command for the requested open intent. */
@@ -131,21 +152,31 @@ async function openNativePathWithIntent(
     && await openInBrowser(path, signal, platform, run, env)) return
 
   if (platform === 'darwin') {
-    await run('open', intent === 'text-editor' ? ['-t', path] : [path], signal)
+    await run('open', intent === 'text-editor' ? ['-t', path] : intent === 'reveal' ? ['-R', path] : [path], signal)
     return
   }
 
   if (platform === 'win32') {
+    if (intent === 'reveal') {
+      await revealWindowsPath(path, signal, run)
+      return
+    }
     await openWindowsPath(path, signal, run)
     return
   }
 
   if (platform === 'linux') {
     if (wsl) {
+      if (intent === 'reveal') {
+        await revealWindowsPath(await translateWslPath(path, signal, run), signal, run)
+        return
+      }
       await openWslPath(path, signal, run)
       return
     }
-    await run('xdg-open', [path], signal)
+    // Desktop Linux names no standard reveal gesture; opening the containing
+    // directory is the closest the freedesktop specification offers.
+    await run('xdg-open', [intent === 'reveal' ? dirname(path) : path], signal)
     return
   }
 
@@ -199,4 +230,32 @@ export function openNativeTextFile(
   internals: PathOpenerInternals = {},
 ): Promise<void> {
   return openNativePathWithIntent(path, signal, 'text-editor', internals)
+}
+
+/**
+ * Whether {@link revealNativePath} plausibly reaches a desktop on this host.
+ * Reveal needs exactly the same desktop presence as open, so this shares
+ * {@link canOpenNativePath}'s platform truths.
+ * @param internals - platform and environment seam for deterministic tests.
+ * @returns true when handing a path to the native file manager can work at all.
+ */
+export function canRevealNativePath(internals: PathOpenerInternals = {}): boolean {
+  return canOpenNativePath(internals)
+}
+
+/**
+ * Select a filesystem path in the operating system's file manager (Finder
+ * `open -R`, Explorer `/select,`), as opposed to opening it with its default
+ * application. Desktop Linux names no standard reveal gesture, so the
+ * containing directory opens instead; the browser fast path never applies.
+ * @param path - absolute or host-resolvable path (caller owns resolution).
+ * @param signal - caller/connection lifetime; abort terminates the native command.
+ * @param internals - Platform, environment, and runner hooks for deterministic tests.
+ */
+export function revealNativePath(
+  path: string,
+  signal: AbortSignal,
+  internals: PathOpenerInternals = {},
+): Promise<void> {
+  return openNativePathWithIntent(path, signal, 'reveal', internals)
 }

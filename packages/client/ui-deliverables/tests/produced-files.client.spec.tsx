@@ -286,7 +286,7 @@ describe('ProducedFiles row', () => {
   ): Pick<ProducedFilesProps, 'isLoopback' | 'useHostDescription'> => {
     const description = canOpenPath === undefined
       ? undefined
-      : { version: 'test', cwd: '/workspace', attachedSessions: 1, canOpenPath }
+      : { version: 'test', cwd: '/workspace', attachedSessions: 1, canOpenPath, canRevealPath: canOpenPath }
     return {
       isLoopback,
       useHostDescription: selector => selector(description),
@@ -381,13 +381,17 @@ describe('ProducedFiles row', () => {
     bounds.mockRestore()
   })
 
-  it('keeps the folder action absent without overflow or a local native opener', () => {
+  it('shows the folder action for any produced file while a local native opener exists', () => {
     const openFile = vi.fn<(path: string) => void>()
     const view = render(
       <ProducedFiles matched={['a.md']} openFile={openFile} {...capability(true)} t={t} />,
     )
+    // No overflow anymore: any produced path suffices.
+    fireEvent.click(view.getByRole('button', { name: '在文件夹中显示' }))
+    expect(openFile).toHaveBeenCalledWith('.')
+
+    // Without a local native opener the action stays absent, overflow or not.
     const overflowing = ['a.md', 'b.md', 'c.md', 'd.md', 'e.md', 'f.md', 'g.md']
-    expect(view.queryByRole('button', { name: '在文件夹中显示' })).toBeNull()
     for (const unavailable of [capability(false), capability(true, false), capability(undefined)]) {
       view.rerender(<ProducedFiles matched={overflowing} openFile={openFile} {...unavailable} t={t} />)
       expect(view.queryByRole('button', { name: '在文件夹中显示' })).toBeNull()

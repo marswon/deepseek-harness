@@ -79,6 +79,12 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     insertWorkspaceBefore: vi.fn(async () => {}),
     insertSessionBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
+    isLoopback: true,
+    openWorkspacePath: vi.fn(),
+    useHostDescription: bindSnapshotSelector({
+      getSnapshot: () => ({ canOpenPath: true }),
+      subscribe: () => () => {},
+    } as never),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
     renderSlot: ((_name: string, owner: { open: boolean }) => (owner.open ? <div data-testid="directory-flow" /> : null)) as never,
     t,
@@ -156,6 +162,50 @@ describe('WorkspaceBrowser', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
     expect(b.store.getSnapshot().groupBy).toBe('workspace')
+  })
+
+  it('reveals a workspace in the OS file manager only when the Host can open paths', () => {
+    const openWorkspacePath = vi.fn()
+    mount({
+      openWorkspacePath,
+      useWorkspaces: hook(workspaceState([workspace('alpha', [])])),
+    })
+    fireEvent.click(screen.getByRole('button', { name: '工作区“alpha”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '在文件夹中显示' }))
+    expect(openWorkspacePath).toHaveBeenCalledWith('/projects/alpha')
+    cleanup()
+
+    // Off the loopback gate the row disappears from the menu entirely.
+    mount({
+      isLoopback: false,
+      useWorkspaces: hook(workspaceState([workspace('alpha', [])])),
+    })
+    fireEvent.click(screen.getByRole('button', { name: '工作区“alpha”的操作' }))
+    expect(screen.queryByRole('menuitem', { name: '在文件夹中显示' })).toBeNull()
+    cleanup()
+
+    // Same when the Host reports no native open capability.
+    mount({
+      useHostDescription: bindSnapshotSelector({
+        getSnapshot: () => ({ canOpenPath: false }),
+        subscribe: () => () => {},
+      } as never),
+      useWorkspaces: hook(workspaceState([workspace('alpha', [])])),
+    })
+    fireEvent.click(screen.getByRole('button', { name: '工作区“alpha”的操作' }))
+    expect(screen.queryByRole('menuitem', { name: '在文件夹中显示' })).toBeNull()
+    cleanup()
+
+    // And before the first handshake publishes a description at all.
+    mount({
+      useHostDescription: bindSnapshotSelector({
+        getSnapshot: () => undefined,
+        subscribe: () => () => {},
+      }),
+      useWorkspaces: hook(workspaceState([workspace('alpha', [])])),
+    })
+    fireEvent.click(screen.getByRole('button', { name: '工作区“alpha”的操作' }))
+    expect(screen.queryByRole('menuitem', { name: '在文件夹中显示' })).toBeNull()
   })
 
   it('persists flat-list drag order locally and applies Last updated within that account', async () => {

@@ -2523,7 +2523,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
     },
     host: {
       describe: request => ok(request, {
-        version: '0.0.0-fixture', cwd: '/tmp/fixture', attachedSessions, canOpenPath: true,
+        version: '0.0.0-fixture', cwd: '/tmp/fixture', attachedSessions, canOpenPath: true, canRevealPath: true,
       }),
       // Deterministic native pick: the keyless lanes drive the full
       // pick-then-adopt path without an OS chooser (design-mock content,
@@ -2562,6 +2562,7 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         return ok(request, { path: target })
       },
       openPath: request => ok(request, { opened: true as const }),
+      revealPath: request => ok(request, { opened: true as const }),
     },
     workspace: {
       list: request => ok(request, {
@@ -3098,6 +3099,7 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'host.listDirectory': return this.api.host.listDirectory(request, new AbortController().signal)
       case 'host.createDirectory': return this.api.host.createDirectory(request)
       case 'host.openPath': return this.api.host.openPath(request, new AbortController().signal)
+      case 'host.revealPath': return this.api.host.revealPath(request, new AbortController().signal)
       case 'workspace.list': return this.api.workspace.list(request)
       case 'workspace.create': return this.api.workspace.create(request)
       case 'workspace.rename': return this.api.workspace.rename(request)

@@ -145,7 +145,9 @@ describe('web e2e: a finished turn ends with the files it produced', () => {
     expect(await chips.nth(0).innerText()).toBe('关于我.md')
     expect(await chips.nth(1).innerText()).toBe('index.html')
     expect(await row.getByText('+ 8 files', { exact: true }).count()).toBe(1)
-    const showFolder = page.getByRole('button', { name: 'Show in folder', exact: true })
+    // Tool rows carry their own same-named reveal buttons; scope to the
+    // produced-files folder action by its class.
+    const showFolder = page.locator('[class*="showFolder"]')
     expect(await showFolder.count()).toBe(1)
     expect(await page.getByText('Produced', { exact: true }).count()).toBe(1)
 

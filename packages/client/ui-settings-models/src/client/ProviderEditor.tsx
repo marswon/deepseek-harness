@@ -27,6 +27,7 @@ import type { CredentialView, IApiClient, SettingsNamespaceView, SettingsPathOpV
 import {
   deletePath, getPath, hasPath, nodeAtPath, rehydrateSchema, setPath, validateDraft,
 } from '@deepseek-ai/dsh-client-schema-form'
+import { IconChevronDownOutline14, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import {
   DeepSeekModelsEditor, modelDrafts, validateDeepSeekModels,
 } from './DeepSeekModelsEditor.tsx'
@@ -361,8 +362,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       <>
         <div className={styles['field']}>
           <span className={styles['fieldLabel']}>{t('keyInput')}</span>
-          <input
-            className={styles['input']}
+          <Input
             type="password"
             autoComplete="off"
             value={keyDraft}
@@ -377,7 +377,14 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
           {shownKeyFailure === undefined ? null : <p className={styles['error']}>{t(shownKeyFailure)}</p>}
         </div>
         {props.credentialOnly === true ? null : <details className={styles['customized']}>
-          <summary className={styles['customizedSummary']}>{t('customized')}</summary>
+          <summary className={styles['customizedSummary']}>
+            {/* Decorative: the summary text names the disclosure, so the glyph
+                stays out of the accessibility tree. */}
+            <span className={styles['customizedChevron']} aria-hidden="true">
+              <IconChevronDownOutline14 />
+            </span>
+            {t('customized')}
+          </summary>
           <div className={styles['customizedBody']}>
             {/* The name and the protocol are the create card's two remaining
                 profile fields; a route the adapter ships defaults both from
@@ -386,8 +393,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
               ? (
                 <div className={styles['field']}>
                   <span className={styles['fieldLabel']}>{t('customDisplayName')}</span>
-                  <input
-                    className={styles['input']}
+                  <Input
                     type="text"
                     value={stringAt(draft, 'displayName') ?? ''}
                     // What this route is called the moment the field is
@@ -408,8 +414,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
               : null}
             <div className={styles['field']}>
               <span className={styles['fieldLabel']}>{t('baseUrl')}</span>
-              <input
-                className={styles['input']}
+              <Input
                 type="text"
                 value={stringAt(draft, 'baseURL') ?? ''}
                 placeholder={family === 'deepseek'

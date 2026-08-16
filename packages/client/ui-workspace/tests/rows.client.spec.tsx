@@ -279,6 +279,30 @@ describe('workspace browser rows', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
+  it('workspace row menu reveals the directory only when the action is supplied', () => {
+    const onReveal = vi.fn()
+    const group: GroupNode = {
+      key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0, label: 'Project',
+      sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
+    }
+    const { unmount } = render(<ProjectRowItem
+      group={group} onToggle={vi.fn()} onCreate={vi.fn()}
+      actions={{ rename: vi.fn(), delete: vi.fn(), reveal: onReveal }} t={t}
+    />)
+    fireEvent.click(screen.getByRole('button', { name: '工作区“Project”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '在文件夹中显示' }))
+    expect(onReveal).toHaveBeenCalledOnce()
+    unmount()
+
+    // No reveal action (Host cannot open paths): the menu drops the row.
+    render(<ProjectRowItem
+      group={group} onToggle={vi.fn()} onCreate={vi.fn()}
+      actions={{ rename: vi.fn(), delete: vi.fn() }} t={t}
+    />)
+    fireEvent.click(screen.getByRole('button', { name: '工作区“Project”的操作' }))
+    expect(screen.queryByRole('menuitem', { name: '在文件夹中显示' })).toBeNull()
+  })
+
   it('workspace hover card shows its details and copies the full directory path', async () => {
     vi.useFakeTimers()
     const writeText = vi.fn(async () => {})

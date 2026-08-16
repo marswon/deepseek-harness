@@ -24,6 +24,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
+import { Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import { apiKeyFailure } from './apiKey.ts'
 import { EditorFooter } from './EditorFooter.tsx'
 import { validateDeepSeekModels } from './DeepSeekModelsEditor.tsx'
@@ -194,8 +195,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
       </div>
       <div className={styles['field']}>
         <span className={styles['fieldLabel']}>{t('customRoute')}</span>
-        <input
-          className={styles['input']}
+        <Input
           type="text"
           value={route}
           placeholder="acme-gateway"
@@ -211,8 +211,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
         : <p className={styles['advancedHint']}>{t('customRouteHint')}</p>}
       <div className={styles['field']}>
         <span className={styles['fieldLabel']}>{t('customDisplayName')}</span>
-        <input
-          className={styles['input']}
+        <Input
           type="text"
           value={displayName}
           placeholder={route.length === 0 ? t('customDisplayName') : route}
@@ -223,8 +222,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
       </div>
       <div className={styles['field']}>
         <span className={styles['fieldLabel']}>{t('baseUrl')}</span>
-        <input
-          className={styles['input']}
+        <Input
           type="text"
           value={baseURL}
           placeholder="https://gateway.example/v1"
@@ -247,8 +245,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
       </div>
       <div className={styles['field']}>
         <span className={styles['fieldLabel']}>{t('keyInput')}</span>
-        <input
-          className={styles['input']}
+        <Input
           type="password"
           autoComplete="off"
           value={keyDraft}

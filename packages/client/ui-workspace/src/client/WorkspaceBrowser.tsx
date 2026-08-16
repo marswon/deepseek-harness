@@ -217,6 +217,7 @@ type SessionTreeProps = Pick<
   WorkspaceBrowserProps,
   'useSessions' | 'startSession' | 'open' | 'forkSession'
   | 'insertWorkspaceBefore' | 'insertSessionBefore' | 't'
+  | 'isLoopback' | 'openWorkspacePath' | 'useHostDescription'
 > & {
   workspaces: readonly WorkspaceView[]
   /** Explicit persisted zero-or-five-session state by Workspace group. */
@@ -251,10 +252,15 @@ function SessionTree({
   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
-  sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, t,
+  sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder,
+  isLoopback, openWorkspacePath, useHostDescription, t,
 }: SessionTreeProps) {
   const list = useSessions(s => s)
   const current = list.current
+  // Native file-manager open needs both a loopback page and a Host that
+  // reports the capability (same gate the produced-files row uses).
+  const hostCanOpenPath = useHostDescription(description => description?.canOpenPath === true)
+  const canOpenPath = isLoopback && hostCanOpenPath
   const [expandedSessionGroups, setExpandedSessionGroups] = useState<string[]>([])
   // Transient drag marker state; the selected mode owns the resulting order.
   const [drag, setDrag] = useState<DragState | null>(null)
@@ -467,6 +473,12 @@ function SessionTree({
                 actions={group.workspaceId === undefined
                   ? undefined
                   : {
+                    reveal: canOpenPath && group.cwd !== undefined
+                      ? () => {
+                        /* v8 ignore next -- the reveal action is only attached when group.cwd is a string. */
+                        if (group.cwd !== undefined) openWorkspacePath(group.cwd)
+                      }
+                      : undefined,
                     rename: () => {
                     /* v8 ignore next -- narrowing guard: the actions object exists only for real-workspace groups. */
                       if (group.workspaceId !== undefined) onRenameRequest(group.workspaceId, group.label)
@@ -745,6 +757,8 @@ export function WorkspaceBrowser({
   useWorkspaces,
   useStore,
   actions,
+  isLoopback,
+  openWorkspacePath,
   startSession,
   open,
   renameSession,
@@ -758,6 +772,7 @@ export function WorkspaceBrowser({
   searchSessions,
   searchResultLimit,
   useDirectoryFlow,
+  useHostDescription,
   renderSlot,
   t,
 }: WorkspaceBrowserProps) {
@@ -1151,6 +1166,9 @@ export function WorkspaceBrowser({
                 open={open}
                 insertWorkspaceBefore={insertWorkspaceBefore}
                 insertSessionBefore={insertSessionBefore}
+                isLoopback={isLoopback}
+                openWorkspacePath={openWorkspacePath}
+                useHostDescription={useHostDescription}
                 orderBy={orderBy}
                 t={t}
                 onRenameRequest={(workspaceId, currentTitle) => {

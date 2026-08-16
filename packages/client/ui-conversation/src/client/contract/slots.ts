@@ -359,6 +359,11 @@ export interface ChatNodeOwnerProps {
   /** Session workspace root; Tool summaries display paths relative to it. */
   cwd?: string | undefined
   openFile: (path: string) => void
+  /**
+   * Reveal a filesystem path in the host OS file manager. Absent unless the
+   * deployment advertises the reveal capability (see ChatViewInjected.revealFile).
+   */
+  revealFile?: ((path: string) => void) | undefined
   inspectCall: (callId: CallId) => void
   forkAt: (seq: number) => void
   /** Resolve a session-authorized historical image for inline display. */
@@ -680,6 +685,13 @@ export interface ChatViewInjected {
    * (relative paths resolve against the session cwd).
    */
   openFile: (path: string) => void
+  /**
+   * Reveal a tool-arg filesystem path in the host OS file manager (same
+   * cwd resolution as {@link ChatViewInjected.openFile}). Absent unless the
+   * page is loopback and the current Host description reports canRevealPath —
+   * the row then renders no reveal affordance.
+   */
+  revealFile?: ((path: string) => void) | undefined
   loadOlder: () => void
   /** Resolve a session-authorized historical image for inline display. */
   loadImage: (attachment: ImageAttachmentRef) => Promise<string>

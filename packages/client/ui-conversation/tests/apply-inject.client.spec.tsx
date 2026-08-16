@@ -45,9 +45,11 @@ function sessionFakeFor() {
   } satisfies SessionBehaviorOverrides
 }
 
-async function bench() {
+async function bench(
+  connection: { api: unknown; isLoopback: boolean; hostDescription?: unknown } = { api: { settings: {} }, isLoopback: false },
+) {
   const runtime = await SlotTestRuntime.create()
-  runtime.provide('connection', { api: { settings: {} }, isLoopback: false })
+  runtime.provide('connection', connection)
   // The plugin injects both; these specs exercise no settings path.
   runtime.provide('remote', { $on: () => () => {} })
   runtime.provide('settingsScope', { bind: () => stubSettingsScope().scope } as never)
@@ -238,6 +240,35 @@ describe('conversation slot inject API', () => {
       expect(b.runtime.workspaces.calls).toContainEqual({ method: 'openPath', args: ['/proj/src/a.ts'] })
     })
     await b.runtime.dispose()
+  })
+
+  it('revealFile (chat view face) rides the Host capability and resolves against session cwd', async () => {
+    const hostDescription = { getSnapshot: () => ({ canRevealPath: true }), subscribe: () => () => {} }
+    const b = await bench({ api: { settings: {} }, isLoopback: true, hostDescription })
+    const { injected } = b.chatViewApi(ROOT)
+    injected.revealFile?.('src/a.ts')
+    await vi.waitFor(() => {
+      expect(b.runtime.workspaces.calls).toContainEqual({ method: 'revealPath', args: ['/proj/src/a.ts'] })
+    })
+    // Host-side failure stays silent, same stance as openFile.
+    b.runtime.workspaces.stub('revealPath', () => Promise.reject(new Error('no file manager')))
+    injected.revealFile?.('src/b.ts')
+    await vi.waitFor(() => {
+      expect(b.runtime.workspaces.calls).toContainEqual({ method: 'revealPath', args: ['/proj/src/b.ts'] })
+    })
+    await b.runtime.dispose()
+
+    // A non-loopback page, or a Host that does not advertise canRevealPath,
+    // gets no reveal callback at all — the rows render no affordance.
+    const remote = await bench()
+    expect(remote.chatViewApi(ROOT).injected.revealFile).toBeUndefined()
+    await remote.runtime.dispose()
+    const headless = await bench({
+      api: { settings: {} }, isLoopback: true,
+      hostDescription: { getSnapshot: () => undefined, subscribe: () => () => {} },
+    })
+    expect(headless.chatViewApi(ROOT).injected.revealFile).toBeUndefined()
+    await headless.runtime.dispose()
   })
 
   it('routes workspace switching through the runtime owner, carrying the draft', async () => {

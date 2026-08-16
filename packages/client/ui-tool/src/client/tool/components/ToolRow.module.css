@@ -125,6 +125,23 @@
   text-decoration-color: currentColor;
 }
 
+/* Reveal-in-folder icon riding beside the open path link. */
+.revealButton {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--dsw-alias-label-quaternary);
+  cursor: pointer;
+}
+
+.revealButton:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
 /* Error row's collapsed summary: the failure's first line in the error color. */
 .errorSummary {
   color: var(--dsw-alias-state-error-primary);

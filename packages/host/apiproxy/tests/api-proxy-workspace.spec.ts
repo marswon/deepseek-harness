@@ -63,6 +63,7 @@ async function harness(
   picker: DirectoryPickerCapability = { kind: 'native', pick: async () => null },
   extras: {
     openPath?: (path: string, signal: AbortSignal) => Promise<void>
+    revealPath?: (path: string, signal: AbortSignal) => Promise<void>
     canOpenPath?: () => boolean
   } = {},
 ) {
@@ -106,6 +107,7 @@ async function harness(
     defaultModelSelection: () => ({ provider: 'test', model: 'test-model' }),
     cwd: root,
     ...extras.openPath === undefined ? {} : { openPath: extras.openPath },
+    ...extras.revealPath === undefined ? {} : { revealPath: extras.revealPath },
     ...extras.canOpenPath === undefined ? {} : { canOpenPath: extras.canOpenPath },
   })
   return { api, ctx, storageDomain, root }
@@ -256,6 +258,47 @@ describe('host.openPath', () => {
     const pending = api.host.openPath(request({ path: '/tmp/a.txt' }), abort.signal)
     abort.abort()
     expect((await pending).result).toMatchObject({ ok: false, error: { code: 'cancelled' } })
+  })
+})
+
+describe('host.revealPath', () => {
+  it('shares the canOpenPath override and reports its own injected boundary', async () => {
+    const visible = await harness(undefined, undefined, { canOpenPath: () => true })
+    const headless = await harness(undefined, undefined, { canOpenPath: () => false })
+    const injected = await harness(undefined, undefined, { revealPath: async () => {} })
+    expect(expectOk(await visible.api.host.describe(request({}))).canRevealPath).toBe(true)
+    expect(expectOk(await headless.api.host.describe(request({}))).canRevealPath).toBe(false)
+    expect(expectOk(await injected.api.host.describe(request({}))).canRevealPath).toBe(true)
+  })
+
+  it('reveals through the injected native boundary', async () => {
+    const revealed: string[] = []
+    const { api } = await harness(undefined, undefined, {
+      revealPath: async (path) => { revealed.push(path) },
+    })
+    expect((await api.host.revealPath(request({ path: '/tmp/a.txt' }), new AbortController().signal)).result)
+      .toEqual({ ok: true, value: { opened: true } })
+    expect(revealed).toEqual(['/tmp/a.txt'])
+  })
+
+  it('propagates abort into the native boundary as a cancelled RPC error', async () => {
+    const { api } = await harness(undefined, undefined, {
+      revealPath: (_path, signal) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => { reject(new Error('aborted')) }, { once: true })
+      }),
+    })
+    const abort = new AbortController()
+    const pending = api.host.revealPath(request({ path: '/tmp/a.txt' }), abort.signal)
+    abort.abort()
+    expect((await pending).result).toMatchObject({ ok: false, error: { code: 'cancelled' } })
+  })
+
+  it('maps a native reveal failure onto the wire vocabulary', async () => {
+    const { api } = await harness(undefined, undefined, {
+      revealPath: async () => { throw new Error('no file manager') },
+    })
+    expect((await api.host.revealPath(request({ path: '/tmp/a.txt' }), new AbortController().signal)).result)
+      .toMatchObject({ ok: false, error: { code: 'internal' } })
   })
 })
 

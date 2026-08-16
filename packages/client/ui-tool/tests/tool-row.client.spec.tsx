@@ -283,6 +283,50 @@ describe('ToolRow', () => {
     expect(view.getByText(/"a": 1/)).toBeTruthy()
   })
 
+  it('a file row with onRevealFile reveals through the folder icon without toggling the row', () => {
+    const open = vi.fn()
+    const reveal = vi.fn()
+    const view = render(
+      <ToolRow
+        {...rowProps}
+        variant="read" title="Read" summary="src/a.ts"
+        filePath="src/a.ts" onOpenFile={open} onRevealFile={reveal}
+      />,
+    )
+    const icon = view.getByRole('button', { name: '在文件夹中显示' })
+    fireEvent.click(icon)
+    expect(reveal).toHaveBeenCalledWith('src/a.ts')
+    expect(open).not.toHaveBeenCalled()
+    const row = view.getByRole('button', { name: /Read/ })
+    expect(row.getAttribute('aria-expanded')).toBe('false')
+    // Enter/Space on the icon must not bubble into the row's expand keydown.
+    fireEvent.keyDown(icon, { key: 'Enter' })
+    fireEvent.keyDown(icon, { key: ' ' })
+    fireEvent.keyDown(icon, { key: 'Tab' })
+    expect(row.getAttribute('aria-expanded')).toBe('false')
+    // The path link still opens.
+    fireEvent.click(view.getByText('src/a.ts'))
+    expect(open).toHaveBeenCalledWith('src/a.ts')
+  })
+
+  it('no reveal icon without an open link: a lone onRevealFile or an error row stays quiet', () => {
+    const reveal = vi.fn()
+    const lone = render(
+      <ToolRow {...rowProps} variant="read" title="Read" summary="src/a.ts" filePath="src/a.ts" onRevealFile={reveal} />,
+    )
+    expect(lone.queryByRole('button', { name: '在文件夹中显示' })).toBeNull()
+    lone.unmount()
+    const failed = render(
+      <ToolRow
+        {...rowProps}
+        variant="write" title="Write" state="error" errorSummary="cannot overwrite"
+        filePath="src/a.ts" onOpenFile={() => {}} onRevealFile={reveal}
+      />,
+    )
+    expect(failed.queryByRole('button', { name: '在文件夹中显示' })).toBeNull()
+    expect(reveal).not.toHaveBeenCalled()
+  })
+
   it('non-file rows do not open anything when the summary is clicked', () => {
     const open = vi.fn()
     const view = render(<ToolRow {...rowProps} onOpenFile={open} />)

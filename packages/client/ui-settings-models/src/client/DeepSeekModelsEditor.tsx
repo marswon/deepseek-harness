@@ -8,7 +8,8 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  IconChevronDownOutline14, IconChevronRightOutline14, IconPlusOutline16, IconTrashOutline16,
+  Button, IconChevronDownOutline14, IconChevronRightOutline14, IconPlusOutline16, IconTrashOutline16,
+  Input,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
@@ -242,8 +243,7 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
   ): ReactNode => (
     <label className={styles['modelField']}>
       <span className={styles['modelFieldLabel']}>{props.t(field === 'contextWindow' ? 'contextWindow' : 'maxTokens')}</span>
-      <input
-        className={styles['input']}
+      <Input
         type="text"
         inputMode="numeric"
         value={capacityText(model, index, field)}
@@ -273,14 +273,15 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
         </div>
         {props.overridden
           ? (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               className={styles['linkButton']}
               disabled={props.disabled}
               onClick={reset}
             >
               {props.t('resetModels')}
-            </button>
+            </Button>
           )
           : null}
       </div>
@@ -291,8 +292,7 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
             {props.models.map((model, index) => (
               <div className={styles['modelEntry']} key={index}>
                 <div className={styles['modelRow']}>
-                  <input
-                    className={styles['input']}
+                  <Input
                     type="text"
                     value={typeof model['id'] === 'string' ? model['id'] : ''}
                     placeholder={props.t('modelId')}
@@ -306,8 +306,7 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
                       if (trimmed !== event.target.value) update(index, 'id', trimmed)
                     }}
                   />
-                  <input
-                    className={styles['input']}
+                  <Input
                     type="text"
                     value={typeof model['name'] === 'string' ? model['name'] : ''}
                     placeholder={props.t('modelName')}
@@ -325,7 +324,9 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
                     title={props.t('modelAdvanced')}
                     onClick={() => { toggle(index) }}
                   >
-                    {expanded.has(index) ? <IconChevronDownOutline14 /> : <IconChevronRightOutline14 />}
+                    <span className={styles['iconGlyph']} aria-hidden="true">
+                      {expanded.has(index) ? <IconChevronDownOutline14 /> : <IconChevronRightOutline14 />}
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -335,7 +336,9 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
                     disabled={props.disabled}
                     onClick={() => { remove(index) }}
                   >
-                    <IconTrashOutline16 size={14} />
+                    <span className={styles['iconGlyph']} aria-hidden="true">
+                      <IconTrashOutline16 size={14} />
+                    </span>
                   </button>
                 </div>
                 {expanded.has(index)
@@ -350,15 +353,16 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
             ))}
           </div>
         )}
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="sm"
         className={styles['addModelButton']}
+        icon={<IconPlusOutline16 size={14} />}
         disabled={props.disabled}
         onClick={() => { props.onChange([...props.models.map(model => ({ ...model })), { id: '' }]) }}
       >
-        <IconPlusOutline16 size={14} />
         {props.t('addModel')}
-      </button>
+      </Button>
     </section>
   )
 }

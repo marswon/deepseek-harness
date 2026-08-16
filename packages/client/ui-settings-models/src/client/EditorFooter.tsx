@@ -14,6 +14,7 @@
  */
 
 import type { ReactNode } from 'react'
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
 
@@ -46,22 +47,20 @@ export function EditorFooter(props: EditorFooterProps): ReactNode {
   const { t } = props
   return (
     <div className={styles['editorActions']}>
-      <button
-        type="button"
-        className={styles['secondaryButton']}
+      <Button
+        variant="outline"
         disabled={props.busy}
         onClick={props.onCancel}
       >
         {t(props.cancelLabel ?? 'cancel')}
-      </button>
-      <button
-        type="button"
-        className={styles['primaryButton']}
+      </Button>
+      <Button
+        variant="primary"
         disabled={props.submitDisabled}
         onClick={props.onSubmit}
       >
         {props.busy ? t(props.submitBusyLabel) : t(props.submitLabel)}
-      </button>
+      </Button>
     </div>
   )
 }
