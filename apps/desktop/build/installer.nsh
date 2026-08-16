@@ -24,7 +24,7 @@
   ${endIf}
   # electron-updater launches NSIS from this cache. Exclude the current NSIS
   # process (the PowerShell process's parent) while clearing earlier attempts.
-  nsExec::Exec `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "$parent = (Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId; Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like ($env:LOCALAPPDATA + '\@deepseek-aidsh-desktop-updater\pending\*') -and $_.ProcessId -ne $parent } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"`
+  nsExec::Exec `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "$$parent = (Get-CimInstance Win32_Process -Filter ('ProcessId=' + $$PID)).ParentProcessId; Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -like ($$env:LOCALAPPDATA + '\@deepseek-aidsh-desktop-updater\pending\*') -and $$_.ProcessId -ne $$parent } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
   Pop $0
   nsExec::Exec `"$SYSDIR\cmd.exe" /C taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
