@@ -1,4 +1,4 @@
-import { app, Menu, shell } from 'electron'
+import { app, dialog, Menu, shell } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 
 /** Actions the application menu triggers, supplied by the app shell. */
@@ -40,7 +40,22 @@ export function installMenu(actions: MenuActions, dataDir: string): void {
         { label: 'Open Data Folder', click: () => void shell.openPath(dataDir) },
         ...(process.platform === 'darwin'
           ? []
-          : [{ type: 'separator' } as MenuItemConstructorOptions, { label: 'Check for Updates…', click: actions.checkForUpdates }]),
+          : [
+            { type: 'separator' } as MenuItemConstructorOptions,
+            { label: 'Check for Updates…', click: actions.checkForUpdates },
+            // Windows/Linux have no About role — show the version ourselves.
+            {
+              label: 'About DeepSeek Harness',
+              click: () => {
+                void dialog.showMessageBox({
+                  type: 'info',
+                  message: 'DeepSeek Harness',
+                  detail: `Version ${app.getVersion()}`,
+                  buttons: ['OK'],
+                })
+              },
+            },
+          ]),
       ],
     },
     {
