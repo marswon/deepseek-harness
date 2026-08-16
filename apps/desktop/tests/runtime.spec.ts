@@ -1,6 +1,6 @@
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   buildHarnessLaunch, bundledNodePath, harnessBinPath, parseReadyUrl, resolveHarnessRuntime,
@@ -62,6 +62,17 @@ describe('buildHarnessLaunch', () => {
     expect(launch.args).toEqual(['--expose-internals', '/staged/dsh-runtime/lib/bin.js', 'web', '--host', '127.0.0.1', '--port', '0'])
     expect(launch.env['ELECTRON_RUN_AS_NODE']).toBeUndefined()
     expect(launch.env['DSH_HOME']).toBe(paths.dshHome)
+  })
+
+  it('puts the bundled Node bin directory on PATH in packaged builds', () => {
+    const launch = buildHarnessLaunch(
+      { kind: 'packaged', runtimeDir: '/staged/dsh-runtime' },
+      paths,
+      { PATH: '/usr/bin' },
+    )
+    // Plugins spawn corepack/npm/npx by name; the bundled stock Node ships
+    // them in its bin directory.
+    expect(launch.env['PATH']).toBe(`${join('/staged/dsh-runtime', 'node-runtime')}${delimiter}/usr/bin`)
   })
 
   it('never mutates the caller environment', () => {

@@ -1,11 +1,19 @@
-import { dialog, shell } from 'electron'
+import { app, dialog, net, shell } from 'electron'
+import { spawn } from 'node:child_process'
+import { createWriteStream, existsSync } from 'node:fs'
+import { mkdir, readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import pkg from 'electron-updater'
+import type { UpdateInfo } from 'electron-updater'
 
 const { autoUpdater } = pkg
 
 /**
- * Where manual macOS updates are downloaded from. Keep in sync with the
- * publish config in electron-builder.yml.
+ * Where updates are published. Keep in sync with the publish config in
+ * electron-builder.yml.
  */
 const RELEASES_URL = 'https://github.com/marswon/deepseek-harness/releases'
 
@@ -21,21 +29,27 @@ export interface UpdaterOptions {
   /** Status sink mirroring the Harness log writer. */
   readonly log: (line: string) => void
   /**
-   * Runs before quitAndInstall: stop the Harness child so its bundled
-   * node.exe no longer locks files under the install directory. electron-
-   * updater spawns the NSIS installer before quitting the app, so a child
-   * that is still alive at that point makes the installer report the app as
-   * impossible to close.
+   * Runs before the installer is spawned: stop the Harness child so its
+   * bundled node.exe no longer locks files under the install directory, and
+   * arm the quit path so the app exits without the graceful-shutdown wait.
    */
   readonly prepareForInstall?: () => Promise<void>
 }
 
 /**
  * Wire electron-updater against the GitHub Releases feed configured in
- * electron-builder.yml. On Windows the download happens automatically and the
- * user chooses when to restart; on macOS (ad-hoc signed builds) the user is
- * sent to the release page instead — see below. A manual check reports
- * "up to date" when nothing is found.
+ * electron-builder.yml. electron-updater only checks versions and downloads;
+ * the install handoff is owned here because quitAndInstall's
+ * spawn-and-quit race with the NSIS running-process gate repeatedly stranded
+ * users on a "cannot be closed" prompt:
+ * - Windows: the pending installer is spawned detached and the app quits only
+ *   after the spawn succeeds, and stale installer processes from earlier
+ *   failed attempts are force-stopped first (a zombie holds the per-app
+ *   installer mutex, so every later attempt aborts instantly and re-raises
+ *   the zombie's own dialog).
+ * - macOS: ad-hoc signed builds can never pass Squirrel.Mac's signature
+ *   check, so the dmg is downloaded and opened for a manual drag-replace.
+ * A manual check reports "up to date" when nothing is found.
  * @param options - updater wiring.
  * @returns a manual check function for the menu.
  */
@@ -63,27 +77,23 @@ export function setupAutoUpdater(options: UpdaterOptions): () => void {
   }
 
   if (process.platform === 'darwin') {
-    // Local macOS builds are ad-hoc signed, whose designated requirement is a
-    // per-binary cdhash — Squirrel.Mac therefore rejects every update at
-    // install time, after downloading ~200 MB. Skip the download and point at
-    // the release page instead. Revisit if a Developer ID signature is added.
     autoUpdater.autoDownload = false
     autoUpdater.on('update-available', (info) => {
       void dialog
         .showMessageBox({
           type: 'info',
           message: `Version ${info.version} is available`,
-          detail: 'This build cannot update itself on macOS. Download the new version and drag it over the old one.',
+          detail: 'Download it now? The disk image opens when the download finishes; drag DeepSeek Harness over the old one in Applications.',
           buttons: ['Download', 'Later'],
         })
         .then(({ response }) => {
-          if (response === 0) void shell.openExternal(`${RELEASES_URL}/tag/v${info.version}`)
+          if (response === 0) void downloadAndOpenMacUpdate(info.version, options)
         })
     })
     return check
   }
 
-  autoUpdater.on('update-downloaded', () => {
+  autoUpdater.on('update-downloaded', (info) => {
     void dialog
       .showMessageBox({
         type: 'info',
@@ -93,13 +103,140 @@ export function setupAutoUpdater(options: UpdaterOptions): () => void {
       })
       .then(({ response }) => {
         if (response !== 0) return
-        const prepare = options.prepareForInstall ?? (() => Promise.resolve())
-        void prepare()
-          .catch((error: unknown) => {
-            options.log(`prepare for install failed: ${error instanceof Error ? error.message : String(error)}`)
-          })
-          .finally(() => { autoUpdater.quitAndInstall() })
+        void installWindowsUpdate(info, options)
       })
   })
   return check
+}
+
+/**
+ * The pending-installer path electron-updater downloads into
+ * (`%LOCALAPPDATA%\<updaterCacheDirName>\pending\<file>`). electron-updater
+ * keeps its DownloadedUpdateHelper private, so the path is reconstructed from
+ * app-update.yml's updaterCacheDirName plus the same base-cache rule as
+ * electron-updater's AppAdapter. Returns null when the layout cannot be
+ * resolved, in which case the caller falls back to quitAndInstall.
+ * @param info - the downloaded update's metadata.
+ * @returns the absolute installer path, or null.
+ */
+async function pendingInstallerPath(info: UpdateInfo): Promise<string | null> {
+  try {
+    const yml = await readFile(join(process.resourcesPath, 'app-update.yml'), 'utf8')
+    const match = /^updaterCacheDirName:\s*'?([^\n']+)'?\s*$/m.exec(yml)
+    const fileName = info.path ?? info.files[0]?.url
+    const cacheDirName = match?.[1]
+    if (cacheDirName === undefined || fileName === undefined) return null
+    const localAppData = process.env['LOCALAPPDATA'] ?? join(homedir(), 'AppData', 'Local')
+    return join(localAppData, cacheDirName, 'pending', fileName)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Force-stop installer processes still running from the pending directory.
+ * An installer that died on its own running-process dialog keeps the per-app
+ * installer mutex held, so every later attempt aborts instantly and raises
+ * the zombie's stale dialog; clearing them makes the mutex reachable again.
+ * @param pendingDir - the updater pending directory.
+ */
+async function killStaleInstallers(pendingDir: string): Promise<void> {
+  const escaped = pendingDir.replace(/'/g, "''")
+  const command = 'Get-CimInstance Win32_Process'
+    + ` | Where-Object { $_.Path -and $_.Path.StartsWith('${escaped}', 'CurrentCultureIgnoreCase') }`
+    + ' | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }'
+  await new Promise<void>((resolve) => {
+    const child = spawn('powershell.exe', ['-NoProfile', '-Command', command], { stdio: 'ignore' })
+    child.once('error', () => { resolve() })
+    child.once('exit', () => { resolve() })
+  })
+}
+
+/**
+ * Hand the downloaded update to the NSIS installer: stop the Harness child,
+ * clear stale installers, spawn the pending installer detached, and quit only
+ * once the spawn succeeds. Falls back to quitAndInstall when the pending
+ * installer cannot be located or spawned.
+ * @param info - the downloaded update's metadata.
+ * @param options - updater wiring.
+ */
+async function installWindowsUpdate(info: UpdateInfo, options: UpdaterOptions): Promise<void> {
+  const installer = await pendingInstallerPath(info)
+  const prepare = options.prepareForInstall ?? (() => Promise.resolve())
+  await prepare().catch((error: unknown) => {
+    options.log(`prepare for install failed: ${error instanceof Error ? error.message : String(error)}`)
+  })
+  if (installer !== null) {
+    await killStaleInstallers(dirname(installer))
+    if (existsSync(installer)) {
+      const spawned = await new Promise<boolean>((resolve) => {
+        const child = spawn(installer, ['--updated', '--force-run'], {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: false,
+        })
+        child.once('error', () => { resolve(false) })
+        child.once('spawn', () => {
+          child.unref()
+          resolve(true)
+        })
+      })
+      if (spawned) {
+        options.log(`installer spawned: ${installer}`)
+        app.quit()
+        return
+      }
+      options.log(`failed to spawn installer: ${installer}`)
+    } else {
+      options.log(`pending installer missing: ${installer}`)
+    }
+  }
+  autoUpdater.quitAndInstall()
+}
+
+/**
+ * Download the macOS dmg for one release and open it for a manual
+ * drag-replace. Squirrel.Mac auto-install is not attempted: ad-hoc signed
+ * builds carry a per-binary cdhash as their designated requirement, so the
+ * signature equality check rejects every update after a ~200 MB download.
+ * @param version - the release version to download.
+ * @param options - updater wiring.
+ */
+async function downloadAndOpenMacUpdate(version: string, options: UpdaterOptions): Promise<void> {
+  try {
+    // Artifact name mirrors the mac artifactName in electron-builder.yml.
+    const fileName = `DeepSeek-Harness-${version}-${process.arch}.dmg`
+    const dir = join(app.getPath('userData'), 'updates', version)
+    await mkdir(dir, { recursive: true })
+    const destination = join(dir, fileName)
+    options.log(`downloading update: ${fileName}`)
+    const response = await net.fetch(`${RELEASES_URL}/download/v${version}/${fileName}`, { redirect: 'follow' })
+    if (!response.ok || response.body === null) {
+      throw new Error(`update download failed: HTTP ${String(response.status)}`)
+    }
+    await pipeline(
+      // Electron's fetch body types against the DOM stream generics; the
+      // byte stream itself is identical, so narrow at the node seam.
+      Readable.fromWeb(response.body as unknown as import('node:stream/web').ReadableStream<Uint8Array>),
+      createWriteStream(destination),
+    )
+    options.log(`update downloaded to ${destination}`)
+    const openError = await shell.openPath(destination)
+    if (openError !== '') throw new Error(`failed to open the disk image: ${openError}`)
+    await dialog.showMessageBox({
+      type: 'info',
+      message: `Version ${version} is ready to install`,
+      detail: 'The disk image has opened. Drag DeepSeek Harness onto Applications to replace the old version, then reopen it.',
+      buttons: ['OK'],
+    })
+  } catch (error) {
+    options.log(`update download failed: ${error instanceof Error ? error.message : String(error)}`)
+    const { response } = await dialog.showMessageBox({
+      type: 'error',
+      message: 'The update could not be downloaded',
+      detail: 'Open the release page to download it manually?',
+      buttons: ['Open release page', 'Cancel'],
+    })
+    if (response === 0) void shell.openExternal(`${RELEASES_URL}/tag/v${version}`)
+  }
 }

@@ -1,6 +1,6 @@
 import { cp, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import type { DesktopPaths } from './paths.ts'
 
 /**
@@ -160,13 +160,18 @@ export function buildHarnessLaunch(runtime: HarnessRuntime, paths: DesktopPaths,
         cwd: paths.launchRoot,
         env,
       }
-    case 'packaged':
+    case 'packaged': {
+      const nodeBin = bundledNodePath(runtime.runtimeDir)
       return {
-        command: bundledNodePath(runtime.runtimeDir),
+        command: nodeBin,
         args: ['--expose-internals', harnessBinPath(runtime), ...webArgs],
         cwd: paths.launchRoot,
-        env,
+        // The bundled stock Node ships corepack/npm/npx in its bin directory;
+        // putting it on PATH lets plugins spawn them by name (dshmarket's
+        // plugin installs run `corepack enable` / `npm -g`).
+        env: { ...env, PATH: `${dirname(nodeBin)}${delimiter}${env.PATH ?? ''}` },
       }
+    }
   }
 }
 

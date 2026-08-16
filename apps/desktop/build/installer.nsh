@@ -11,11 +11,18 @@
 ; (prepareForInstall). Kill any straggler by exact image name — taskkill needs
 ; no WMI, works when the process is gone (prints an error, harmless), and we
 ; never prompt.
+;
+; electron-builder's allowOnlyOneInstallerInstance.nsh picks this up via
+; `!ifmacrodef customCheckAppRunning`, replacing the stock macro for both the
+; installer and the uninstaller.
 !macro customCheckAppRunning
   ${if} ${isUpdated}
     # The app quits itself before the installer starts; give it a beat.
     Sleep 500
   ${endIf}
+  nsExec::Exec `"$SYSDIR\cmd.exe" /C taskkill /IM "${APP_EXECUTABLE_FILENAME}"`
+  Pop $0
+  Sleep 1000
   nsExec::Exec `"$SYSDIR\cmd.exe" /C taskkill /F /IM "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
   Sleep 300

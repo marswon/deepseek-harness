@@ -1,24 +1,57 @@
+import { EventEmitter } from 'node:events'
+import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * updater.ts wires electron-updater dialogs; both electron modules are mocked
- * so the event handlers can be driven directly. process.platform is stubbed
- * per test because the update flow differs across darwin (manual download)
- * and win32 (auto download + quitAndInstall).
+ * updater.ts wires electron-updater dialogs and owns the install handoff;
+ * electron, child_process, and electron-updater are mocked so the event
+ * handlers can be driven directly. process.platform and process.resourcesPath
+ * are stubbed per test because the update flow differs across darwin
+ * (download the dmg, open it) and win32 (spawn the pending NSIS installer,
+ * then quit).
  */
 
 const mocks = vi.hoisted(() => ({
   showMessageBox: vi.fn(),
   openExternal: vi.fn(),
+  openPath: vi.fn(async (_path: string) => ''),
+  appQuit: vi.fn(),
+  appGetPath: vi.fn(),
+  netFetch: vi.fn(),
+  spawn: vi.fn(),
   checkForUpdates: vi.fn(async () => ({})),
   quitAndInstall: vi.fn(),
   handlers: new Map<string, (info?: unknown) => void>(),
 }))
-const { showMessageBox, openExternal, checkForUpdates, quitAndInstall, handlers } = mocks
+const { showMessageBox, openExternal, openPath, appQuit, appGetPath, netFetch, spawn, checkForUpdates, quitAndInstall, handlers } = mocks
+
+/** A spawned child that reports a successful spawn and an immediate exit. */
+function fakeChild(): unknown {
+  const child = new EventEmitter() as EventEmitter & { unref: () => void }
+  child.unref = () => {}
+  queueMicrotask(() => {
+    child.emit('spawn')
+    child.emit('exit', 0)
+  })
+  return child
+}
 
 vi.mock('electron', () => ({
+  app: {
+    getPath: (name: string): unknown => mocks.appGetPath(name) as unknown,
+    quit: (): unknown => mocks.appQuit() as unknown,
+  },
   dialog: { showMessageBox: (options: unknown): unknown => mocks.showMessageBox(options) as unknown },
-  shell: { openExternal: (url: string): unknown => mocks.openExternal(url) as unknown },
+  net: { fetch: (...args: unknown[]): unknown => mocks.netFetch(...args) as unknown },
+  shell: {
+    openExternal: (url: string): unknown => mocks.openExternal(url) as unknown,
+    openPath: (path: string): unknown => mocks.openPath(path) as unknown,
+  },
+}))
+vi.mock('node:child_process', () => ({
+  spawn: (...args: unknown[]): unknown => mocks.spawn(...args) as unknown,
 }))
 vi.mock('electron-updater', () => ({
   default: {
@@ -34,29 +67,46 @@ vi.mock('electron-updater', () => ({
 import { setupAutoUpdater } from '../src/main/updater.ts'
 
 const realPlatform = process.platform
+const realResourcesPath = process.resourcesPath
 
 function stubPlatform(platform: NodeJS.Platform): void {
   Object.defineProperty(process, 'platform', { value: platform, configurable: true })
 }
 
+function stubResourcesPath(resourcesPath: string): void {
+  Object.defineProperty(process, 'resourcesPath', { value: resourcesPath, configurable: true })
+}
+
 /** Flush the dialog .then() chain plus any prepare/quit microtasks. */
 async function settle(): Promise<void> {
-  await vi.waitFor(() => { /* resolved by assertions below */ }, { timeout: 50 }).catch(() => {})
   await new Promise(resolve => setImmediate(resolve))
   await new Promise(resolve => setImmediate(resolve))
 }
 
 describe('setupAutoUpdater', () => {
+  const scratch: string[] = []
+
   beforeEach(() => {
-    showMessageBox.mockReset()
-    openExternal.mockReset()
-    checkForUpdates.mockClear()
-    quitAndInstall.mockClear()
+    for (const mock of [showMessageBox, openExternal, openPath, appQuit, appGetPath, netFetch, checkForUpdates, quitAndInstall]) {
+      mock.mockReset()
+    }
+    openPath.mockResolvedValue('')
+    spawn.mockReset()
+    spawn.mockImplementation(() => fakeChild())
     handlers.clear()
   })
-  afterEach(() => {
+  afterEach(async () => {
     Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true })
+    Object.defineProperty(process, 'resourcesPath', { value: realResourcesPath, configurable: true })
+    delete process.env['LOCALAPPDATA']
+    await Promise.all(scratch.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
   })
+
+  async function scratchDir(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-updater-spec-'))
+    scratch.push(dir)
+    return dir
+  }
 
   it('reports that development builds never check', () => {
     const check = setupAutoUpdater({ isPackaged: false, updateFeedPresent: false, log: () => {} })
@@ -70,9 +120,41 @@ describe('setupAutoUpdater', () => {
     expect(showMessageBox).toHaveBeenCalledWith({ message: 'This build has no update feed configured.' })
   })
 
-  it('on win32 the Restart button stops the Harness child before quitAndInstall', async () => {
+  it('on win32 Restart stops the child, sweeps stale installers, spawns the pending installer, then quits', async () => {
+    stubPlatform('win32')
+    const localAppData = await scratchDir()
+    process.env['LOCALAPPDATA'] = localAppData
+    const resources = await scratchDir()
+    await writeFile(join(resources, 'app-update.yml'), "updaterCacheDirName: '@deepseek-aidsh-desktop-updater'\n")
+    stubResourcesPath(resources)
+    const pending = join(localAppData, '@deepseek-aidsh-desktop-updater', 'pending')
+    await mkdir(pending, { recursive: true })
+    await writeFile(join(pending, 'DeepSeek-Harness-Setup-0.2.0.exe'), 'MZ')
+
+    const order: string[] = []
+    setupAutoUpdater({
+      isPackaged: true,
+      updateFeedPresent: true,
+      log: () => {},
+      prepareForInstall: async () => { order.push('prepare') },
+    })
+    appQuit.mockImplementation(() => { order.push('quit') })
+    showMessageBox.mockResolvedValue({ response: 0 })
+    handlers.get('update-downloaded')?.({ version: '0.2.0', path: 'DeepSeek-Harness-Setup-0.2.0.exe', files: [] })
+    await vi.waitFor(() => { expect(order).toEqual(['prepare', 'quit']) })
+    const installerSpawn = spawn.mock.calls.find(call => String(call[0]).endsWith('DeepSeek-Harness-Setup-0.2.0.exe'))
+    expect(installerSpawn?.[1]).toEqual(['--updated', '--force-run'])
+    expect(installerSpawn?.[2]).toMatchObject({ detached: true })
+    // The stale-installer sweep ran powershell against the pending directory first.
+    const sweep = spawn.mock.calls.find(call => String(call[0]) === 'powershell.exe')
+    expect(String(sweep?.[1]?.[2])).toContain('@deepseek-aidsh-desktop-updater')
+    expect(quitAndInstall).not.toHaveBeenCalled()
+  })
+
+  it('on win32 a missing pending installer falls back to quitAndInstall after prepare', async () => {
     stubPlatform('win32')
     const order: string[] = []
+    stubResourcesPath(await scratchDir()) // no app-update.yml inside
     setupAutoUpdater({
       isPackaged: true,
       updateFeedPresent: true,
@@ -81,12 +163,14 @@ describe('setupAutoUpdater', () => {
     })
     quitAndInstall.mockImplementation(() => { order.push('quitAndInstall') })
     showMessageBox.mockResolvedValue({ response: 0 })
-    handlers.get('update-downloaded')?.()
+    handlers.get('update-downloaded')?.({ version: '0.2.0', path: 'DeepSeek-Harness-Setup-0.2.0.exe', files: [] })
     await vi.waitFor(() => { expect(order).toEqual(['prepare', 'quitAndInstall']) })
+    expect(appQuit).not.toHaveBeenCalled()
   })
 
-  it('on win32 a failing prepare step cannot block quitAndInstall', async () => {
+  it('on win32 a failing prepare step cannot block the install', async () => {
     stubPlatform('win32')
+    stubResourcesPath(await scratchDir())
     setupAutoUpdater({
       isPackaged: true,
       updateFeedPresent: true,
@@ -94,7 +178,7 @@ describe('setupAutoUpdater', () => {
       prepareForInstall: async () => { throw new Error('stop failed') },
     })
     showMessageBox.mockResolvedValue({ response: 0 })
-    handlers.get('update-downloaded')?.()
+    handlers.get('update-downloaded')?.({ version: '0.2.0', path: 'x.exe', files: [] })
     await vi.waitFor(() => { expect(quitAndInstall).toHaveBeenCalledOnce() })
   })
 
@@ -102,22 +186,60 @@ describe('setupAutoUpdater', () => {
     stubPlatform('win32')
     setupAutoUpdater({ isPackaged: true, updateFeedPresent: true, log: () => {} })
     showMessageBox.mockResolvedValue({ response: 1 })
-    handlers.get('update-downloaded')?.()
+    handlers.get('update-downloaded')?.({ version: '0.2.0', path: 'x.exe', files: [] })
     await settle()
+    expect(quitAndInstall).not.toHaveBeenCalled()
+    expect(appQuit).not.toHaveBeenCalled()
+  })
+
+  it('on darwin Download fetches the dmg into userData and opens it', async () => {
+    stubPlatform('darwin')
+    const userData = await scratchDir()
+    appGetPath.mockReturnValue(userData)
+    netFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([1, 2, 3]))
+          controller.close()
+        },
+      }),
+    })
+    setupAutoUpdater({ isPackaged: true, updateFeedPresent: true, log: () => {} })
+    showMessageBox.mockResolvedValue({ response: 0 })
+    handlers.get('update-available')?.({ version: '0.2.0' })
+    const expected = join(userData, 'updates', '0.2.0', `DeepSeek-Harness-0.2.0-${process.arch}.dmg`)
+    await vi.waitFor(() => { expect(openPath).toHaveBeenCalledWith(expected) })
+    expect(await readFile(expected)).toEqual(Buffer.from([1, 2, 3]))
+    expect(netFetch.mock.calls[0]?.[0]).toBe(
+      'https://github.com/marswon/deepseek-harness/releases/download/v0.2.0/' + `DeepSeek-Harness-0.2.0-${process.arch}.dmg`,
+    )
     expect(quitAndInstall).not.toHaveBeenCalled()
   })
 
-  it('on darwin an available update links to its release page instead of downloading', async () => {
+  it('on darwin a failed download offers the release page instead', async () => {
     stubPlatform('darwin')
+    appGetPath.mockReturnValue(await scratchDir())
+    netFetch.mockRejectedValue(new Error('offline'))
     setupAutoUpdater({ isPackaged: true, updateFeedPresent: true, log: () => {} })
     showMessageBox.mockResolvedValue({ response: 0 })
-    handlers.get('update-available')?.({ version: '0.1.0-rc.10' })
+    handlers.get('update-available')?.({ version: '0.2.0' })
     await vi.waitFor(() => {
       expect(openExternal).toHaveBeenCalledWith(
-        'https://github.com/marswon/deepseek-harness/releases/tag/v0.1.0-rc.10',
+        'https://github.com/marswon/deepseek-harness/releases/tag/v0.2.0',
       )
     })
     expect(quitAndInstall).not.toHaveBeenCalled()
+  })
+
+  it('on darwin Later downloads nothing', async () => {
+    stubPlatform('darwin')
+    setupAutoUpdater({ isPackaged: true, updateFeedPresent: true, log: () => {} })
+    showMessageBox.mockResolvedValue({ response: 1 })
+    handlers.get('update-available')?.({ version: '0.2.0' })
+    await settle()
+    expect(netFetch).not.toHaveBeenCalled()
   })
 
   it('a failed check is logged, never thrown into a dialog', async () => {
