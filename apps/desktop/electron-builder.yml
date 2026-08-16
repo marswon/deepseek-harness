@@ -3,6 +3,8 @@
 # produced by scripts/stage-runtime.mjs is copied in by afterPack.
 appId: com.deepseek.harness
 productName: DeepSeek Harness
+# Do not derive the Linux executable from the scoped npm package name.
+executableName: DeepSeek-Harness
 directories:
   output: release
 files:

@@ -32,9 +32,11 @@ jobs:
       matrix:
         include:
           - target: mac-arm64
+            arch: arm64
             runner: macos-14
             script: package:mac:arm64
           - target: mac-x64
+            arch: x64
             runner: macos-13
             script: package:mac:x64
           - target: win-x64
@@ -78,7 +80,9 @@ jobs:
 
       - name: Package signed and notarized macOS app
         if: ${{ startsWith(matrix.target, 'mac-') && github.event_name == 'push' }}
-        run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.script }} -- --config.mac.notarize=true
+        run: |
+          pnpm --filter @deepseek-ai/dsh-desktop run stage
+          pnpm --filter @deepseek-ai/dsh-desktop exec electron-builder --mac --${{ matrix.arch }} --config.mac.notarize=true
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_LINK: ${{ secrets.MAC_CERTIFICATE_BASE64 }}

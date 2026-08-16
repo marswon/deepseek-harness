@@ -40,7 +40,12 @@ function run(step, command, args) {
   console.log(`stage-runtime: ${step}: ${command} ${args.join(' ')}`)
   // CI=true keeps the legacy deploy's nested `install --production`
   // non-interactive (it purges the staging node_modules first).
-  const result = spawnSync(command, args, { cwd: repoRoot, stdio: 'inherit', env: { ...process.env, CI: 'true' } })
+  const result = spawnSync(command, args, {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+    env: { ...process.env, CI: 'true' },
+  })
   if (result.status !== 0) throw new Error(`stage-runtime: ${step} failed with exit code ${String(result.status)}.`)
 }
 
