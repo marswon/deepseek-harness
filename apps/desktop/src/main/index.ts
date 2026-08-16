@@ -94,18 +94,19 @@ async function restartHarness(): Promise<void> {
 }
 
 const INBOX_PROFILE_BUNDLES = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless'])
+const WINDOWS_QUARANTINED_BUNDLES = new Set(['@linxin666/dsh-web-ui-all'])
 
-/** Remove community profile dependencies after a native plugin crash, preserving in-box bundles. */
-async function disableMarketPlugins(): Promise<string[]> {
+/** Remove selected community profile dependencies, preserving in-box bundles. */
+async function disableMarketPlugins(only?: ReadonlySet<string>): Promise<string[]> {
   const manifestFile = join(paths.dshHome, 'profiles', 'web', 'package.json')
   const manifest = JSON.parse(await readFile(manifestFile, 'utf8')) as { dependencies?: Record<string, string>; dsh?: { profile?: { bundles?: string[] } } }
   const dependencies = manifest.dependencies ?? {}
-  const removed = Object.keys(dependencies).filter(name => !INBOX_PROFILE_BUNDLES.has(name))
+  const removed = Object.keys(dependencies).filter(name => !INBOX_PROFILE_BUNDLES.has(name) && (only === undefined || only.has(name)))
   if (removed.length === 0) return removed
   await writeFile(join(paths.logDir, `web-profile-before-recovery-${Date.now()}.json`), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
-  manifest.dependencies = Object.fromEntries(Object.entries(dependencies).filter(([name]) => INBOX_PROFILE_BUNDLES.has(name)))
+  manifest.dependencies = Object.fromEntries(Object.entries(dependencies).filter(([name]) => !removed.includes(name)))
   if (Array.isArray(manifest.dsh?.profile?.bundles)) {
-    manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => INBOX_PROFILE_BUNDLES.has(name))
+    manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => !removed.includes(name))
   }
   await writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
   return removed
@@ -149,6 +150,10 @@ if (!gotLock) {
     await ensureDesktopPaths(paths)
     log.open(paths.logFile)
     log.write(`desktop shell starting (${runtimeMode.kind} mode)`)
+    if (process.platform === 'win32') {
+      const removed = await disableMarketPlugins(WINDOWS_QUARANTINED_BUNDLES)
+      if (removed.length > 0) log.write(`quarantined Windows-incompatible market plugins: ${removed.join(', ')}`)
+    }
     const checkForUpdates = setupAutoUpdater({
       isPackaged: app.isPackaged,
       updateFeedPresent: app.isPackaged && existsSync(join(process.resourcesPath, 'app-update.yml')),
