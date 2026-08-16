@@ -63,9 +63,15 @@ jobs:
       - name: Build Harness runtime and web UI
         run: pnpm run build
 
-      - name: Package desktop app
-        if: ${{ !(startsWith(matrix.target, 'mac-') && github.event_name == 'push') }}
-        shell: ${{ startsWith(matrix.target, 'win-') && 'pwsh' || 'bash' }}
+      - name: Package Windows desktop app
+        if: ${{ startsWith(matrix.target, 'win-') }}
+        shell: pwsh
+        run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.script }}
+        env:
+          GH_TOKEN: ${{ github.event_name == 'push' && github.token || '' }}
+
+      - name: Package non-Windows desktop app
+        if: ${{ !startsWith(matrix.target, 'win-') && !(startsWith(matrix.target, 'mac-') && github.event_name == 'push') }}
         run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.script }}
         env:
           GH_TOKEN: ${{ github.event_name == 'push' && github.token || '' }}
