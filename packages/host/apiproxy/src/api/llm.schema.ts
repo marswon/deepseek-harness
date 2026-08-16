@@ -17,6 +17,7 @@ export const configurableProviderViewSchema = z.object({
   settingsPath: z.array(z.string()),
   active: z.boolean(),
   declared: z.boolean().optional(),
+  consoleUrl: z.url().optional(),
 }) satisfies z.ZodType<Wire<ConfigurableProviderView>>
 
 /** llm.providers request payload. */
@@ -56,6 +57,9 @@ export const llmDiscoverModelsRequestSchema = z.object({
   // `subscribeEnvelopes()` observers can see — redacting that tap is a
   // configuration-plane-wide change, not this method's to make alone.
   apiKey: z.string().min(1).optional(),
+  // True = the configuration surface's "check this key" action: the adapter
+  // must answer from a live authenticated round-trip, not its registry.
+  validate: z.boolean().optional(),
 }) satisfies z.ZodType<Wire<RequestPayload<'llm.discoverModels'>>>
 
 /** llm.discoverModels response value. */

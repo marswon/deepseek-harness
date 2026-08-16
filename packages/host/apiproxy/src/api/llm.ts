@@ -29,6 +29,12 @@ export interface ConfigurableProviderView {
    * surface must treat absence as "unknown", not as "shipped".
    */
   declared?: boolean
+  /**
+   * The provider's official console page where a user obtains or buys an API
+   * key, when the adapter knows one. Absent means "unknown", so a surface
+   * offers the get-a-key link only where a destination is named.
+   */
+  consoleUrl?: string
 }
 
 /** Llm-domain unary methods (the map keys llm.* of RpcMethodMap). */
@@ -71,6 +77,12 @@ export interface LlmApi {
       baseURL?: string
       api?: string
       apiKey?: string
+      /**
+       * When true, the adapter must answer from a live network round-trip
+       * authenticated with `apiKey`, even for a route its own registry already
+       * describes — the configuration surface's "check this key" action.
+       */
+      validate?: boolean
     }>,
     signal?: AbortSignal,
   ): Promise<RpcResponse<{ models: DiscoveredModelView[] }>>

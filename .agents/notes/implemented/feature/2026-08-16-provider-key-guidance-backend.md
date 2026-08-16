@@ -1,0 +1,35 @@
+# Agent Note: Provider key guidance backend — consoleUrl and key validation
+
+Status: implemented
+
+English | [中文](2026-08-16-provider-key-guidance-backend.zh.md)
+
+## Problem
+
+The Models settings page could list configurable providers and interrogate a draft endpoint ([the interrogation note](../architecture/2026-08-04-draft-provider-endpoint-interrogation.md)), but two Cherry Studio-style guidance gestures had no backend answer. First, "where do I get a key for this provider?": the directory entry named the provider and its settings address but no official console page, so a get-a-key link would have had to hardcode URLs in the UI. Second, "does this key work?": for a catalog route, `discoverModels` answered from the adapter's registry with no network call at all — the correct answer to "which models?" and a useless one to "is this key accepted?".
+
+## Decision
+
+**`consoleUrl` rides the configurable-provider directory.** `LlmConfigurableProvider` gains an optional `consoleUrl` — the provider's official page for obtaining or buying an API key — wired unchanged through `ConfigurableProviderView` (`consoleUrl?: string`, `z.url().optional()` in the schema) and the `llm.providers` mapping, which omits the field rather than emitting an explicit undefined. Absence means "no destination known", so a surface offers the link only where the adapter named one. `dsh-llm-deepseek` declares `https://platform.deepseek.com/api_keys` for `deepseek-official`. `dsh-llm-pi-ai` gains two module-private tables keyed by catalog provider id — `PROVIDER_CONSOLE_URLS` and `PROVIDER_DISPLAY_NAMES`, each entry verified against the installed catalog's own base URLs — and `directoryEntries()` resolves both: a profile's configured `displayName` wins, a tabled provider gets its pretty spelling (`OpenAI`, `xAI`, …) instead of the raw route key, and an untabled provider keeps the key and no `consoleUrl`. A profile `displayName` equal to the route key is the resolved default rather than a choice, so storing any profile no longer demotes a tabled provider's entry back to the raw key.
+
+**`validate: true` turns interrogation into the check-key action.** `LlmModelDiscoveryRequest` gains an optional `validate` flag — answer only from a live network round-trip authenticated with the given key — passed through the wire schema and the `llm.discoverModels` mapping like every other draft field, and passed through the `llm` seam untouched: the seam routes drafts; only the adapter decides what the flag changes. In `dsh-llm-pi-ai`, `validate` skips the catalog short-circuit, and a validated catalog route whose draft names no endpoint falls back to the catalog provider's own base URL — the key being checked belongs to that endpoint — while one the catalog records no endpoint for is told to set a `baseURL` rather than being lied to with "ships no catalog". Error classification is unchanged; the response shape stays the discovered-models answer.
+
+**`dsh-llm-deepseek` now serves discovery for its namespace.** The plugin registers `registerModelDiscovery('llm-deepseek', …)`: a request naming `deepseek-official` answers from the configured catalog with no network call — the same posture pi-ai takes for its catalog routes — and `validate: true` (or any draft naming another route) interrogates `GET {baseURL}/models`, OpenAI-compatible with bearer auth, `baseURL` falling back to the configured endpoint. A typed `apiKey` wins over the stored credential, which resolves through the plugin's own per-request resolver only on the network path and fails `MISSING_CREDENTIAL` when no key exists anywhere. The module mirrors the pi-ai discovery implementation — same four-megabyte ceiling enforced on bytes read, same abort discipline, same `DISCOVERY_FAILED` taxonomy with the 401/403 "check the API key" suffix — copied rather than shared because pi-ai keeps its discovery package-internal and widening its public API to share plumbing is the worse trade; the deliberate mirror carries `jscpd:ignore` markers stating so.
+
+## Alternatives considered
+
+**A console-URL table in the UI.** Rejected: the UI would own a provider-id → URL map that drifts from the catalog the backend already ships, and a self-hosted gateway entry has no official page at all — only the adapter knows whether one exists. Keeping the fact on the directory entry also gives it to every present and future configuration surface.
+
+**A separate `llm.validateKey` RPC.** Rejected: it would duplicate the discovery pipeline (endpoint resolution, credential precedence, error taxonomy) to return a poorer answer — a boolean — while the discovered-models reply a successful check returns is exactly the candidate list the form wants next.
+
+**Deriving the wire protocol from the catalog under `validate`.** A validated anthropic route falls to the `openai-completions` default and reports the endpoint's 401 as "check the API key", a possible false negative. Rejected as scope: the check-key action targets the OpenAI-compatible providers the guidance flow serves, and the honest fix belongs with protocol-aware probing, not a special case here.
+
+**Sharing the discovery plumbing through `dsh-llm`.** Two consumers is the threshold where extraction starts to pay, but the helpers are interrogation internals — byte-ceiling reads and listing parsing — with no third consumer in sight, and the twin-adapter convention in this repo is already parallel implementation over shared abstraction.
+
+## Consequences
+
+The configuration wire can now answer both guidance gestures with fixed field names a UI codes against: `consoleUrl` on `llm.providers` rows and `validate` on `llm.discoverModels`. Tabled pi-ai providers display their pretty names everywhere the directory shows, which is the visible behavior change beyond the new fields. The copy-not-share choice costs one mirrored module, fenced off with `jscpd` markers; if a third adapter family ever needs endpoint interrogation, the plumbing should move to `dsh-llm` then.
+
+## Testing
+
+`packages/llm/llm/tests/topology.spec.ts` pins the `consoleUrl` directory round-trip and the `validate` pass-through to the adapter. `packages/llm/llm-pi-ai/tests/{catalog,dynamic-config,discovery}.spec.ts` pin the table lookups (all eleven entries, the untabled fallback, the profile-`displayName` precedence) and the `validate` behavior (network forced on a catalog route, registry kept when false or absent, catalog-endpoint fallback, the records-no-endpoint refusal). `packages/llm/llm-deepseek/tests/discovery.spec.ts` drives the new handler against local HTTP servers: the catalog answer, the validate round-trip with stored and typed keys, the configured-endpoint fallback, the 200/401/403/500 matrix, non-listing and non-JSON bodies, the size ceiling in both forms, missing and malformed credentials, and caller cancellation. `packages/host/apiproxy/tests/{api-proxy-config,client-handler}.spec.ts` cover the wire: `consoleUrl` included and excluded by the mapping, `validate` crossing the carrier whole, and absent fields staying absent.

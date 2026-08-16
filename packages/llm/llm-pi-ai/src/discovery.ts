@@ -6,7 +6,10 @@
  * with no network call at all: pi-ai's registry is the authoritative list for
  * its own providers, and it carries the capacities a listing endpoint would
  * not disclose. Only a route the catalog does not describe — a gateway, a
- * self-hosted server — is interrogated over the wire.
+ * self-hosted server — is interrogated over the wire. A request carrying
+ * `validate: true` is the exception: it asks whether the *key* works, which
+ * only a live authenticated round-trip answers, so even a catalog route is
+ * interrogated (at its catalog endpoint when the draft names none).
  *
  * Neither path is a catalog refresh. Nothing here is stored: the request
  * carries a draft the user is still editing, and the reply is candidate
@@ -25,7 +28,7 @@
 import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@deepseek-ai/dsh-llm'
 import type { LlmDiscoveredModel, LlmModelDiscoveryRequest } from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
-import { catalogModels } from './catalog.ts'
+import { catalogModels, catalogProvider } from './catalog.ts'
 
 /**
  * Protocols whose model listing this module can read: the two that speak
@@ -198,7 +201,9 @@ export async function discoverModels(
 ): Promise<readonly LlmDiscoveredModel[]> {
   // A catalog route already has its answer, and a better one: the installed
   // entries carry context windows and output caps no listing endpoint reports.
-  if (request.provider !== undefined) {
+  // `validate` is the one exception: the caller asked whether the key works,
+  // which only a live authenticated round-trip can answer.
+  if (request.provider !== undefined && request.validate !== true) {
     const installed = catalogModels(request.provider)
     if (installed.size > 0) {
       return [...installed.values()].map(model => ({
@@ -209,10 +214,19 @@ export async function discoverModels(
       }))
     }
   }
-  if (request.baseURL === undefined || request.baseURL.length === 0) {
+  // Under `validate` a catalog route keeps its endpoint even when the draft
+  // names none: the catalog's own base URL is the endpoint its key belongs to.
+  // An explicit empty baseURL still means "none", as it does without the flag.
+  const baseURL = request.baseURL !== undefined && request.baseURL.length > 0
+    ? request.baseURL
+    : request.provider === undefined ? undefined : catalogProvider(request.provider)?.baseUrl
+  if (baseURL === undefined) {
     throw new LlmError(
-      `pi-ai ships no catalog for provider "${request.provider ?? ''}", so its models can only come from its`
-      + " endpoint; set a baseURL, or enter this provider's models by hand",
+      request.provider !== undefined && catalogProvider(request.provider) !== undefined
+        ? `pi-ai records no endpoint for provider "${request.provider}"; set a baseURL, or enter this provider's`
+          + ' models by hand'
+        : `pi-ai ships no catalog for provider "${request.provider ?? ''}", so its models can only come from its`
+          + " endpoint; set a baseURL, or enter this provider's models by hand",
       'DISCOVERY_FAILED',
     )
   }
@@ -229,7 +243,7 @@ export async function discoverModels(
       'DISCOVERY_UNSUPPORTED',
     )
   }
-  const url = listingUrl(request.baseURL)
+  const url = listingUrl(baseURL)
   // A key typed into the form wins: it is the one the user is testing, and it
   // may be the replacement for exactly the stored key that is failing. The
   // stored one is only asked for here, past the catalog short-circuit and the

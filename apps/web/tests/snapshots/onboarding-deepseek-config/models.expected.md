@@ -27,6 +27,11 @@
       - text: DeepSeek deepseek-official API 密钥
       - textbox "API 密钥":
         - /placeholder: 已配置——输入新值可替换
+      - button "检查"
+      - paragraph:
+        - text: API Key 是 DeepSeek 开放平台发放的账户密钥，用于标识身份并结算调用费用。注册并充值后创建一个密钥，粘贴到这里即可。
+        - link "前往 DeepSeek 开放平台获取":
+          - /url: https://platform.deepseek.com/api_keys
       - group:
         - text: 自定义设置 API 地址
         - textbox "API 地址":

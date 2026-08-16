@@ -27,6 +27,7 @@ import {
   DeepSeekAdapter,
 } from './adapter.ts'
 import type { DeepSeekCatalogModel, DeepSeekConnectionOptions } from './adapter.ts'
+import { discoverModels } from './discovery.ts'
 
 export {
   DEFAULT_CONTEXT_WINDOW,
@@ -45,6 +46,9 @@ const NS = settingsNamespace('llm-deepseek')
 const DEFAULT_API_KEY_ENV = 'DEEPSEEK_API_KEY'
 /** The single provider route this plugin owns. */
 const PROVIDER = 'deepseek-official'
+
+/** DeepSeek's official console page for obtaining an API key. */
+const CONSOLE_URL = 'https://platform.deepseek.com/api_keys'
 
 const DEFAULT_MODELS: DeepSeekCatalogModel[] = [
   { id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash', contextWindow: DEFAULT_CONTEXT_WINDOW },
@@ -249,8 +253,21 @@ export function apply(ctx: Context, config: Config): void {
   const resolveUserId = (): AnonymousUserId => userId ??= getOrCreateAnonymousUserId()
   const adapter = new DeepSeekAdapter({ options, resolveApiKey, resolveUserId })
   ctx.llm.registerConfigurableProviders([
-    { provider: PROVIDER, displayName: 'DeepSeek', settingsNs: NS, settingsPath: [] },
+    { provider: PROVIDER, displayName: 'DeepSeek', settingsNs: NS, settingsPath: [], consoleUrl: CONSOLE_URL },
   ])
+  // Endpoint interrogation is a configuration-time action over a draft, and
+  // every fact it reads — the catalog for the network-free answer, the
+  // endpoint, the stored credential — resolves through the same thunks the
+  // request path uses, so a settings change reaches the next interrogation.
+  // A configuration surface edits a redacted descriptor and never holds the
+  // stored secret, which is why the stored key is resolved here rather than
+  // required on the draft.
+  ctx.llm.registerModelDiscovery(NS, request => discoverModels(request, {
+    route: PROVIDER,
+    catalog: () => options().models,
+    baseURL: () => options().baseURL,
+    storedApiKey: () => resolveApiKey(options()),
+  }))
   // Route effects bind to this apply fiber via the stable `ctx` reference,
   // even when a swap runs inside the scoped settings callback below.
   const registration = ctx.llm.registerAdapter([PROVIDER], adapter)

@@ -56,7 +56,11 @@ Connection facts are not frozen at load. `resolveAdapterOptions` is the one expl
 
 The one registration-captured fact is the retry policy: when its resolved value changes, the plugin re-registers the route in place (same adapter instance, one synchronous section), so `ctx.llm.providerRetryPolicy('deepseek-official')` always reports the current policy.
 
-The plugin also declares its route in the configurable-provider directory (`ctx.llm.listConfigurableProviders()`): provider `deepseek-official`, settings namespace `llm-deepseek`, empty settings path — the whole section is the profile. Configuration surfaces use that entry to offer this adapter alongside dormant pi-ai providers.
+The plugin also declares its route in the configurable-provider directory (`ctx.llm.listConfigurableProviders()`): provider `deepseek-official`, settings namespace `llm-deepseek`, empty settings path — the whole section is the profile — and `consoleUrl` naming DeepSeek's official get-a-key page (`https://platform.deepseek.com/api_keys`). Configuration surfaces use that entry to offer this adapter alongside dormant pi-ai providers.
+
+## Endpoint interrogation
+
+The plugin offers `ctx.llm.registerModelDiscovery('llm-deepseek', …)`, answering "which models can this provider serve?" for a route a configuration surface is editing or drafting. A request naming `deepseek-official` is answered from the configured catalog with no network call, the same posture the pi-ai twin takes for its catalog routes. `validate: true` is the check-key action: the answer must come from a live round-trip, so the endpoint is interrogated — `GET {baseURL}/models`, OpenAI-compatible, bearer key — with `baseURL` falling back to the configured endpoint (itself defaulting to the public API) when the draft names none or an empty one. A typed `apiKey` wins over the stored credential, which is resolved only on the path that reaches the network and fails with `MISSING_CREDENTIAL` when no key is configured anywhere. A 401 or 403 answers "check the API key", an unreachable endpoint answers "could not reach", and the same byte ceiling, abort discipline, and `DISCOVERY_FAILED` taxonomy as the pi-ai twin apply. Nothing is stored: the reply is candidate metadata the surface offers for adoption.
 
 ## App attribution
 

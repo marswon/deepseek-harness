@@ -107,13 +107,15 @@ describe('configurable-provider directory', () => {
     const events = vi.fn()
     ctx.on('llm/adapters-updated', events)
     ctx.llm.registerConfigurableProviders([
-      entry({ provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] }),
+      entry({ provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [],
+        consoleUrl: 'https://platform.deepseek.com/api_keys' }),
       entry(),
     ])
     expect(events).toHaveBeenCalledTimes(1)
     const listed = ctx.llm.listConfigurableProviders()
     expect(listed).toEqual([
-      { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] },
+      { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [],
+        consoleUrl: 'https://platform.deepseek.com/api_keys' },
       { provider: 'openai', displayName: 'OpenAI', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'] },
     ])
     listed[0]!.displayName = 'mutated'
@@ -212,9 +214,11 @@ describe('model discovery registry', () => {
     const discover = vi.fn(() => Promise.resolve([{ id: 'from-endpoint' }]))
 
     const dispose = ctx.llm.registerModelDiscovery('llm-example', discover)
-    await expect(ctx.llm.discoverModels('llm-example', { baseURL: 'https://gateway.example/v1' }))
+    await expect(ctx.llm.discoverModels('llm-example', { baseURL: 'https://gateway.example/v1', validate: true }))
       .resolves.toEqual([{ id: 'from-endpoint' }])
-    expect(discover).toHaveBeenCalledWith({ baseURL: 'https://gateway.example/v1' })
+    // The request crosses to the adapter untouched, `validate` included: the
+    // seam routes the draft; only the adapter decides what the flag changes.
+    expect(discover).toHaveBeenCalledWith({ baseURL: 'https://gateway.example/v1', validate: true })
 
     // Disposal is observed through the offer itself, which is the only thing
     // the registration ever produced.

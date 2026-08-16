@@ -622,8 +622,10 @@ describe('llm domain', () => {
   it('merges the configurable directory with live routes and appends undeclared ones', async () => {
     const ctx = await harness({ configurableProviders: false })
     ctx.llm.registerConfigurableProviders([
-      { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] },
-      { provider: 'openai', displayName: 'openai', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'] },
+      { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [],
+        consoleUrl: 'https://platform.deepseek.com/api_keys' },
+      { provider: 'openai', displayName: 'OpenAI', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'],
+        consoleUrl: 'https://platform.openai.com/api-keys' },
     ])
     ctx.llm.registerAdapter(['deepseek-official'], new CatalogAdapter('DeepSeek', ['deepseek-v4-flash']))
     ctx.llm.registerAdapter(['undeclared'], new CatalogAdapter('Undeclared', ['u-1']))
@@ -633,10 +635,13 @@ describe('llm domain', () => {
     const api = createApiProxy(ctx, DEFAULTS)
     const value = expectOk(await api.llm.providers(request({})))
     expect(value.providers).toEqual([
-      { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [], active: true },
-      { provider: 'openai', displayName: 'openai', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'], active: false },
+      { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [], active: true,
+        consoleUrl: 'https://platform.deepseek.com/api_keys' },
+      { provider: 'openai', displayName: 'OpenAI', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'], active: false,
+        consoleUrl: 'https://platform.openai.com/api-keys' },
       // An undeclared live route has no settings address, so nothing can be
-      // interrogated on its behalf either.
+      // interrogated on its behalf either — and no adapter named a console
+      // page for it.
       { provider: 'undeclared', displayName: 'Undeclared', settingsNs: '', settingsPath: [], active: true },
     ])
   })
@@ -678,7 +683,7 @@ describe('llm.discoverModels', () => {
     const ctx = await harness()
     const seen: unknown[] = []
     ctx.llm.registerModelDiscovery('llm-pi-ai', (probe) => {
-      seen.push({ baseURL: probe.baseURL, api: probe.api, apiKey: probe.apiKey })
+      seen.push({ baseURL: probe.baseURL, api: probe.api, apiKey: probe.apiKey, validate: probe.validate })
       return Promise.resolve([
         { id: 'acme-large', name: 'Acme Large', contextWindow: 65_536, maxTokens: 4096 },
         { id: 'acme-small' },
@@ -691,6 +696,7 @@ describe('llm.discoverModels', () => {
       baseURL: 'https://gateway.acme.example/v1',
       api: 'openai-completions',
       apiKey: 'probe-key',
+      validate: true,
     })))
 
     expect(value.models).toEqual([
@@ -701,6 +707,7 @@ describe('llm.discoverModels', () => {
       baseURL: 'https://gateway.acme.example/v1',
       api: 'openai-completions',
       apiKey: 'probe-key',
+      validate: true,
     }])
     // Interrogating a draft is a read: no namespace gained a section, and no
     // credential reference was written.

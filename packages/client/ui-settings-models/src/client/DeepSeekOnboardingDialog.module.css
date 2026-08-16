@@ -1,3 +1,7 @@
+/* First-run DeepSeek wizard, inside the shared onboarding modal chrome. Same
+ * token vocabulary as the Models section sheet: 14/24 body, caption grays for
+ * the secondary text, and no literal colors. */
+
 .description {
   margin: 0;
   font-size: 14px;
@@ -5,12 +9,131 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-.editor {
-  margin-top: 24px;
+/* The stepper: three numbered captions on one line; the current step reads in
+   the primary label tone, the rest stay quiet. */
+.steps {
+  display: flex;
+  gap: 16px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.stepItem,
+.stepCurrent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.stepCurrent {
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.stepIndex {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--dsw-alias-border-l3);
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.stepCurrent .stepIndex {
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+/* The step-2 key form: label, input + check button row, verdict, guidance. */
+.keyField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.keyLabel {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.keyRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The Input primitive's wrapper is the row's flexible half. */
+.keyRow > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+/* The modal has no global border-box reset; keep the capsule pair level. */
+.actions button {
+  box-sizing: border-box;
+}
+
+.actions button:focus-visible,
+.linkButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+}
+
+.footer {
+  margin-top: 16px;
+  text-align: center;
+}
+
+/* Quiet text action for leaving the wizard to the Models page. */
+.linkButton {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.linkButton:hover {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.consoleLink {
+  color: var(--dsw-alias-state-business-primary);
+  text-decoration: none;
+}
+
+.consoleLink:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 560px) {
-  .editor {
-    margin-top: 20px;
+  .steps {
+    margin-bottom: 16px;
   }
 }

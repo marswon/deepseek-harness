@@ -3405,6 +3405,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           settingsPath: [...entry.settingsPath],
           active: active.has(entry.provider),
           ...entry.declared === undefined ? {} : { declared: entry.declared },
+          ...entry.consoleUrl === undefined ? {} : { consoleUrl: entry.consoleUrl },
         }))
         // Routes registered without a directory declaration still appear —
         // they exist and serve models — just with no settings address. No
@@ -3427,13 +3428,14 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       },
 
       async discoverModels(request, signal) {
-        const { settingsNs, provider, baseURL, api, apiKey } = request.payload
+        const { settingsNs, provider, baseURL, api, apiKey, validate } = request.payload
         try {
           const models = await ctx.llm.discoverModels(settingsNs, {
             ...provider === undefined ? {} : { provider },
             ...baseURL === undefined ? {} : { baseURL },
             ...api === undefined ? {} : { api },
             ...apiKey === undefined ? {} : { apiKey },
+            ...validate === undefined ? {} : { validate },
             ...signal === undefined ? {} : { signal },
           })
           return ok(request, { models })

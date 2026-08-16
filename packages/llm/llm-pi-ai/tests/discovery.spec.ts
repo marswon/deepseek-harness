@@ -92,6 +92,60 @@ describe('catalog-route model discovery', () => {
     await expect(ctx.llm.discoverModels('llm-pi-ai', { provider: 'deepseek' })).resolves.not.toHaveLength(0)
   })
 
+  it('interrogates a catalog route over the wire when the caller asks to validate the key', async () => {
+    // `validate: true` is the check-key action: the registry answer cannot say
+    // whether the key works, so even a catalog route pays the round-trip.
+    const server = await listingServer({
+      body: JSON.stringify({ data: [{ id: 'from-the-endpoint' }] }),
+    })
+    const ctx = await harness()
+
+    const models = await ctx.llm.discoverModels('llm-pi-ai', {
+      provider: 'deepseek',
+      baseURL: server.url,
+      apiKey: 'probe-key',
+      validate: true,
+    })
+
+    expect(models).toEqual([{ id: 'from-the-endpoint' }])
+    expect(server.paths).toEqual(['/models'])
+    expect(server.headers[0]?.authorization).toBe('Bearer probe-key')
+  })
+
+  it('keeps the registry short-circuit when validate is false', async () => {
+    const server = await listingServer({ body: JSON.stringify({ data: [{ id: 'from-the-endpoint' }] }) })
+    const ctx = await harness()
+
+    await ctx.llm.discoverModels('llm-pi-ai', { provider: 'deepseek', baseURL: server.url, validate: false })
+
+    expect(server.paths).toEqual([])
+  })
+
+  it('validates a catalog route at its catalog endpoint when the draft names none', async () => {
+    // The form's endpoint field is empty for an uncustomized catalog route;
+    // the key being checked still belongs to the provider's own endpoint.
+    const requests: string[] = []
+    vi.stubGlobal('fetch', async (url: string | URL) => {
+      requests.push(String(url))
+      return new Response(JSON.stringify({ data: [{ id: 'm' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+    const ctx = await harness()
+
+    await ctx.llm.discoverModels('llm-pi-ai', { provider: 'deepseek', apiKey: 'probe-key', validate: true })
+
+    expect(requests).toEqual(['https://api.deepseek.com/models'])
+  })
+
+  it('says a validated catalog route with no recorded endpoint needs a baseURL', async () => {
+    // amazon-bedrock ships in the catalog but records no base URL, so there is
+    // no endpoint to fall back to — and "ships no catalog" would be a lie.
+    await expect(discoverModels({ provider: 'amazon-bedrock', validate: true }))
+      .rejects.toThrow(/records no endpoint for provider "amazon-bedrock".*set a baseURL/s)
+  })
+
   it('says where a route the catalog does not describe must get its models', async () => {
     const ctx = await harness()
     await expect(ctx.llm.discoverModels('llm-pi-ai', { provider: 'acme-gateway' }))
