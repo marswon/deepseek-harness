@@ -93,6 +93,10 @@ export function setupAutoUpdater(options: UpdaterOptions): () => void {
     return check
   }
 
+  // Windows installation is owned by spawnInstallerAfterAppExit(). Leaving this
+  // true starts a second silent NSIS process during app.quit(), which races the
+  // detached waiter and can relaunch the old version without applying the update.
+  autoUpdater.autoInstallOnAppQuit = false
   autoUpdater.on('update-downloaded', (info) => {
     void dialog
       .showMessageBox({
