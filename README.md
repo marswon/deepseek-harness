@@ -15,8 +15,12 @@ Get the latest build from [Releases](https://github.com/marswon/deepseek-harness
 | macOS (Apple Silicon) | `DeepSeek-Harness-*-arm64.dmg` | Not signed yet — right-click → **Open** on first launch |
 | Windows 10/11 (installer) | `DeepSeek-Harness-Setup-*.exe` | Per-user install, no administrator rights needed |
 | Windows 10/11 (portable) | `DeepSeek-Harness-*.exe` | Single file, run from anywhere |
+| Linux (Debian/Ubuntu) | `DeepSeek-Harness-*-amd64.deb`, `*-arm64.deb` | Recommended — the only format that keeps the sandbox enabled on Ubuntu 24.04+ |
+| Linux (portable) | `DeepSeek-Harness-*-x86_64.AppImage`, `*-arm64.AppImage` | For non-Debian distributions; runs unsandboxed on Ubuntu 24.04+ |
 
-After install, the app downloads updates in the background and applies them on restart.
+On Linux, prefer the `.deb`: Ubuntu 24.04 and later restrict unprivileged user namespaces, and only a package with an install script can register the AppArmor profile that lets the app keep its sandbox. Install it with `sudo dpkg -i DeepSeek-Harness-*.deb` (follow with `sudo apt-get -f install` if dependencies are missing). An AppImage cannot register that profile and therefore starts with its sandbox disabled; an arm64 AppImage also needs `libfuse2` on the host.
+
+After install, the app downloads updates in the background and applies them on restart. A `.deb` update asks for your password, because installing the package needs root.
 
 ## Screenshots
 
@@ -39,6 +43,7 @@ After install, the app downloads updates in the background and applies them on r
 
 - macOS builds are not yet signed with an Apple Developer certificate, so Gatekeeper warns on first launch; right-click the app and choose **Open**.
 - Windows builds install per user and never ask for administrator rights.
+- Linux `.deb` packages install an AppArmor profile so the renderer stays sandboxed on Ubuntu 24.04+; the AppImage runs it unsandboxed. Verify the profile with `aa-status | grep -i deepseek` after installing.
 - Marketplace plugins are third-party code running with the agent's permissions; install only plugins you trust.
 
 ## Relationship to upstream

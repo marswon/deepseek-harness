@@ -99,5 +99,12 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          prerelease: true
+          # This fork publishes only rc builds, so the newest one is what users
+          # should download. GitHub refuses to make a prerelease the "Latest
+          # release", which left /releases/latest — the link in both READMEs —
+          # pinned to an older tag. The in-app updater is unaffected either
+          # way: electron-updater derives allowPrerelease from the running
+          # app's own version and resolves updates from the Atom feed.
+          prerelease: false
+          make_latest: true
           files: release-assets/*
