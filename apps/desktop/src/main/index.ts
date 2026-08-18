@@ -1,10 +1,11 @@
 import { app, ipcMain, shell } from 'electron'
 import { existsSync } from 'node:fs'
-import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { HarnessLog } from './harness-log.ts'
 import { HarnessProcess } from './harness-process.ts'
+import { OZONE_PLATFORM_HINT_SWITCH, ozonePlatformHint } from './linux-display.ts'
+import { disableMarketPlugins, WINDOWS_QUARANTINED_BUNDLES } from './market-plugins.ts'
 import { installMenu } from './menu.ts'
 import { ensureDesktopPaths, resolveDesktopPaths } from './paths.ts'
 import { buildHarnessLaunch, resolveHarnessRuntime } from './runtime.ts'
@@ -29,6 +30,11 @@ const runtimeMode: RuntimeMode = app.isPackaged
     repoRoot: resolve(libDir, '../../../..'),
     nodeCommand: process.env['npm_node_execpath'] ?? 'node',
   }
+
+// Command-line switches only take effect before the app is ready, so this runs
+// at module scope rather than inside the whenReady() handler below.
+const ozoneHint = ozonePlatformHint(process.platform, process.env, process.argv)
+if (ozoneHint !== null) app.commandLine.appendSwitch(OZONE_PLATFORM_HINT_SWITCH, ozoneHint)
 
 const paths = resolveDesktopPaths(app.getPath('userData'))
 const log = new HarnessLog()
@@ -93,32 +99,13 @@ async function restartHarness(): Promise<void> {
   await startHarness()
 }
 
-const INBOX_PROFILE_BUNDLES = new Set(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-headless'])
-const WINDOWS_QUARANTINED_BUNDLES = new Set(['@linxin666/dsh-web-ui-all'])
-
-/** Remove selected community profile dependencies, preserving in-box bundles. */
-async function disableMarketPlugins(only?: ReadonlySet<string>): Promise<string[]> {
-  const manifestFile = join(paths.dshHome, 'profiles', 'web', 'package.json')
-  const manifest = JSON.parse(await readFile(manifestFile, 'utf8')) as { dependencies?: Record<string, string>; dsh?: { profile?: { bundles?: string[] } } }
-  const dependencies = manifest.dependencies ?? {}
-  const removed = Object.keys(dependencies).filter(name => !INBOX_PROFILE_BUNDLES.has(name) && (only === undefined || only.has(name)))
-  if (removed.length === 0) return removed
-  await writeFile(join(paths.logDir, `web-profile-before-recovery-${Date.now()}.json`), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
-  manifest.dependencies = Object.fromEntries(Object.entries(dependencies).filter(([name]) => !removed.includes(name)))
-  if (Array.isArray(manifest.dsh?.profile?.bundles)) {
-    manifest.dsh.profile.bundles = manifest.dsh.profile.bundles.filter(name => !removed.includes(name))
-  }
-  await writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
-  return removed
-}
-
 function handleShellAction(action: ShellAction): void {
   switch (action) {
     case 'retry':
       void restartHarness()
       return
     case 'disable-market-plugins':
-      void disableMarketPlugins().then((removed) => {
+      void disableMarketPlugins(paths.dshHome, paths.logDir).then((removed) => {
         log.write(`disabled market plugins after native crash: ${removed.join(', ') || 'none'}`)
         void restartHarness()
       }).catch((error: unknown) => {
@@ -151,7 +138,7 @@ if (!gotLock) {
     log.open(paths.logFile)
     log.write(`desktop shell starting (${runtimeMode.kind} mode)`)
     if (process.platform === 'win32') {
-      const removed = await disableMarketPlugins(WINDOWS_QUARANTINED_BUNDLES)
+      const removed = await disableMarketPlugins(paths.dshHome, paths.logDir, WINDOWS_QUARANTINED_BUNDLES)
       if (removed.length > 0) log.write(`quarantined Windows-incompatible market plugins: ${removed.join(', ')}`)
     }
     const checkForUpdates = setupAutoUpdater({
@@ -177,6 +164,13 @@ if (!gotLock) {
     ipcMain.on('dsh-desktop:shell-action', (_event, action: ShellAction) => { handleShellAction(action) })
     await startHarness()
     if (app.isPackaged) checkForUpdates()
+  }).catch((error: unknown) => {
+    // Nothing upstream of startHarness() renders the shell page or a log
+    // sink yet; an unhandled rejection here would otherwise leave the app
+    // silently stuck on a blank or absent window with no diagnostic.
+    const message = error instanceof Error ? error.message : String(error)
+    log.write(`desktop shell startup failed before Harness launch: ${message}`)
+    showShellPage({ status: 'failed', message, logTail: log.recentLines() })
   })
 
   app.on('window-all-closed', () => { app.quit() })

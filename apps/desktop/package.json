@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
   "description": "Desktop shell for DeepSeek Harness: Electron main process supervising a local dsh web child process",
-  "version": "0.1.0-rc.32",
+  "version": "0.1.0-rc.33",
   "author": {
     "name": "DeepSeek Harness",
     "email": "opensource@deepseek.com"
@@ -14,6 +14,7 @@
     "directory": "apps/desktop"
   },
   "type": "module",
+  "desktopName": "DeepSeek-Harness.desktop",
   "main": "lib/main/index.js",
   "files": [
     "lib",
@@ -31,7 +32,9 @@
     "package:win": "node scripts/verify-target.mjs win32 x64 && npm run stage && electron-builder --publish never --win --x64",
     "stage:win": "node scripts/stage-runtime.mjs win32 x64",
     "package:win:cross": "npm run stage:win && electron-builder --publish never --win --x64 --config.win.signAndEditExecutable=false",
-    "package:linux": "node scripts/verify-target.mjs linux x64 && npm run stage && electron-builder --publish never --linux --x64"
+    "package:linux": "npm run package:linux:x64",
+    "package:linux:x64": "node scripts/verify-target.mjs linux x64 && npm run stage && electron-builder --publish never --linux --x64",
+    "package:linux:arm64": "node scripts/verify-target.mjs linux arm64 && npm run stage && electron-builder --publish never --linux --arm64"
   },
   "license": "MIT",
   "dependencies": {

@@ -40,6 +40,10 @@
   dsh_wait_for_app_exit_${dsh_wait_label}:
   nsExec::ExecToStack `"$SYSDIR\cmd.exe" /C tasklist /FI "IMAGENAME eq ${APP_EXECUTABLE_FILENAME}" /NH ^| findstr /I /C:"${APP_EXECUTABLE_FILENAME}"`
   Pop $1
+  # ExecToStack also pushes the captured output text after the return code;
+  # draining it keeps this loop from leaking up to 20 strings onto the shared
+  # NSIS stack, which would desync an unrelated unconditional Pop downstream.
+  Pop $2
   StrCmp $1 1 dsh_app_exited_${dsh_wait_label}
   IntOp $0 $0 + 1
   IntCmp $0 20 dsh_app_exited_${dsh_wait_label}
