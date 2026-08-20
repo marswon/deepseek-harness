@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import Hmr from '@deepseek-ai/cordis-plugin-hmr'
@@ -124,6 +124,34 @@ describe('HMR exact config paths', () => {
       await eventually(() => observed.includes('created'), 'HMR did not observe config creation under a new parent')
     } finally {
       await ctx.fiber.dispose()
+    }
+  })
+
+  it('watches only the config file, not installed dependencies beside it', { timeout: 20_000 }, async () => {
+    const dir = await realpath(mkdtempSync(join(tmpdir(), 'dsh-hmr-config-')))
+    const filename = join(dir, 'cordis.patch.yml')
+    // A profile directory holds the patch file and the profile's dependencies.
+    // Each watched entry costs one inotify handle on Linux, so enumerating the
+    // dependency tree is what exhausts fs.inotify.max_user_watches.
+    mkdirSync(join(dir, 'node_modules', '@scope', 'plugin'), { recursive: true })
+    writeFileSync(join(dir, 'node_modules', '@scope', 'plugin', 'index.js'), 'export default {}\n')
+    writeFileSync(filename, 'plugins: {}\n')
+    const ctx = await bootHmr(dir)
+    const observed: string[] = []
+    try {
+      await ctx.hmr.registerConfig(filename, () => {
+        observed.push(readFileSync(filename, 'utf8'))
+      })
+
+      // Chokidar reports each watched directory keyed by its parent, so the
+      // root's parent appears without its siblings being watched.
+      expect(ctx.hmr.watchedConfigPaths(filename)).toEqual([dirname(dir), dir, filename])
+
+      writeFileSync(filename, 'plugins: {two: {}}\n')
+      await eventually(() => observed.length === 1, 'HMR stopped observing the config file itself')
+    } finally {
+      await ctx.fiber.dispose()
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 
