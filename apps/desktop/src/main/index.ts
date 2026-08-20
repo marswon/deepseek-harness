@@ -4,6 +4,8 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { HarnessLog } from './harness-log.ts'
 import { HarnessProcess } from './harness-process.ts'
+import { OZONE_PLATFORM_HINT_SWITCH, ozonePlatformHint } from './linux-display.ts'
+import { disableMarketPlugins, WINDOWS_QUARANTINED_BUNDLES } from './market-plugins.ts'
 import { installMenu } from './menu.ts'
 import { ensureDesktopPaths, resolveDesktopPaths } from './paths.ts'
 import { buildHarnessLaunch, resolveHarnessRuntime } from './runtime.ts'
@@ -29,6 +31,11 @@ const runtimeMode: RuntimeMode = app.isPackaged
     nodeCommand: process.env['npm_node_execpath'] ?? 'node',
   }
 
+// Command-line switches only take effect before the app is ready, so this runs
+// at module scope rather than inside the whenReady() handler below.
+const ozoneHint = ozonePlatformHint(process.platform, process.env, process.argv)
+if (ozoneHint !== null) app.commandLine.appendSwitch(OZONE_PLATFORM_HINT_SWITCH, ozoneHint)
+
 const paths = resolveDesktopPaths(app.getPath('userData'))
 const log = new HarnessLog()
 
@@ -46,6 +53,7 @@ const harness = new HarnessProcess({
       status: 'failed',
       message: `The Harness process exited unexpectedly (code ${String(code)}).`,
       logTail: log.recentLines(),
+      canDisableMarketPlugins: process.platform === 'win32' && code === 3221226505,
     })
   },
 })
@@ -75,10 +83,12 @@ async function startHarness(): Promise<void> {
     log.write(`harness ready at ${url}`)
     await createMainWindowOnce().loadURL(url)
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
     showShellPage({
       status: 'failed',
-      message: error instanceof Error ? error.message : String(error),
+      message,
       logTail: log.recentLines(),
+      canDisableMarketPlugins: process.platform === 'win32' && message.includes('3221226505'),
     })
   }
 }
@@ -93,6 +103,14 @@ function handleShellAction(action: ShellAction): void {
   switch (action) {
     case 'retry':
       void restartHarness()
+      return
+    case 'disable-market-plugins':
+      void disableMarketPlugins(paths.dshHome, paths.logDir).then((removed) => {
+        log.write(`disabled market plugins after native crash: ${removed.join(', ') || 'none'}`)
+        void restartHarness()
+      }).catch((error: unknown) => {
+        log.write(`failed to disable market plugins: ${error instanceof Error ? error.message : String(error)}`)
+      })
       return
     case 'view-logs':
       void shell.openPath(paths.logFile)
@@ -119,6 +137,10 @@ if (!gotLock) {
     await ensureDesktopPaths(paths)
     log.open(paths.logFile)
     log.write(`desktop shell starting (${runtimeMode.kind} mode)`)
+    if (process.platform === 'win32') {
+      const removed = await disableMarketPlugins(paths.dshHome, paths.logDir, WINDOWS_QUARANTINED_BUNDLES)
+      if (removed.length > 0) log.write(`quarantined Windows-incompatible market plugins: ${removed.join(', ')}`)
+    }
     const checkForUpdates = setupAutoUpdater({
       isPackaged: app.isPackaged,
       updateFeedPresent: app.isPackaged && existsSync(join(process.resourcesPath, 'app-update.yml')),
@@ -142,6 +164,13 @@ if (!gotLock) {
     ipcMain.on('dsh-desktop:shell-action', (_event, action: ShellAction) => { handleShellAction(action) })
     await startHarness()
     if (app.isPackaged) checkForUpdates()
+  }).catch((error: unknown) => {
+    // Nothing upstream of startHarness() renders the shell page or a log
+    // sink yet; an unhandled rejection here would otherwise leave the app
+    // silently stuck on a blank or absent window with no diagnostic.
+    const message = error instanceof Error ? error.message : String(error)
+    log.write(`desktop shell startup failed before Harness launch: ${message}`)
+    showShellPage({ status: 'failed', message, logTail: log.recentLines() })
   })
 
   app.on('window-all-closed', () => { app.quit() })

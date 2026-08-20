@@ -26,6 +26,7 @@ import {
 import { INSTALL_ANCHOR } from './profile-boot.ts'
 
 const NAME = 'dsh'
+const BUNDLED_PNPM = 'pnpm@11.7.0'
 
 /**
  * Whether a resolved dependency exports a profile patch, i.e. is a bundle.
@@ -111,6 +112,20 @@ function anchorPathSpec(argument: string, cwd: string): string {
   return `${prefix}${resolve(cwd, match.groups.path)}`
 }
 
+/** Enable the bundled Node runtime's Corepack shims before invoking pnpm. */
+function enableBundledCorepack(): boolean {
+  if (process.env['DSH_BUNDLED_NODE_RUNTIME'] !== '1') return true
+  const command = process.platform === 'win32' ? 'corepack.cmd' : 'corepack'
+  const result = spawnSync(command, ['enable'], {
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  })
+  if (result.error === undefined && result.status === 0) return true
+  const detail = result.error instanceof Error ? `: ${result.error.message}` : ''
+  process.stderr.write(`${NAME}: could not enable bundled Corepack${detail}\n`)
+  return false
+}
+
 /**
  * Run one `dsh plugin` invocation: init if needed, forward to pnpm, reconcile.
  * @param profile - the profile name.
@@ -124,9 +139,15 @@ export function runPlugin(profile: string, args: readonly string[]): number {
     process.stderr.write(`${NAME}: initialized profile ${profile} at ${dir}\n`)
   }
   const before = readProfileManifest(NAME, dir)
-  // Windows resolves pnpm through its .cmd shim, which spawn() refuses
-  // without a shell since the CVE-2024-27980 hardening.
-  const result = spawnSync('pnpm', args.map(argument => anchorPathSpec(argument, process.cwd())), {
+  const usingBundledRuntime = process.env['DSH_BUNDLED_NODE_RUNTIME'] === '1'
+  if (!enableBundledCorepack()) return 127
+  // The bundled runtime invokes pnpm through Corepack itself, so its first
+  // install does not race creation of the pnpm shim. Source users retain the
+  // system pnpm command. Windows resolves .cmd shims only through a shell.
+  const bundledCorepack = process.platform === 'win32' ? 'corepack.cmd' : 'corepack'
+  const command = usingBundledRuntime ? bundledCorepack : 'pnpm'
+  const forwarded = args.map(argument => anchorPathSpec(argument, process.cwd()))
+  const result = spawnSync(command, usingBundledRuntime ? [BUNDLED_PNPM, ...forwarded] : forwarded, {
     cwd: dir,
     stdio: 'inherit',
     shell: process.platform === 'win32',

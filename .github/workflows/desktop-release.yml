@@ -1,7 +1,7 @@
 # Package the desktop shell for every supported platform. Runs on pull
 # requests touching apps/desktop so packaging regressions surface before
-# merge, and publishes artifacts to a GitHub Release when dispatched from a
-# v-prefixed semver tag (electron-updater rejects non-semver tags).
+# merge, and publishes artifacts to a GitHub Release from a v-prefixed semver
+# tag (electron-updater rejects non-semver tags).
 name: Desktop (dsh)
 
 on:
@@ -9,13 +9,10 @@ on:
     paths:
       - 'apps/desktop/**'
       - '.github/workflows/desktop-release.yml'
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
-    inputs:
-      publish:
-        description: Upload artifacts to a GitHub Release. Must run from a v-prefixed semver tag.
-        required: true
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -28,6 +25,8 @@ jobs:
   package:
     name: Package ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -35,15 +34,15 @@ jobs:
           - target: mac-arm64
             runner: macos-14
             script: package:mac:arm64
-          - target: mac-x64
-            runner: macos-13
-            script: package:mac:x64
           - target: win-x64
             runner: windows-2025
             script: package:win
           - target: linux-x64
             runner: ubuntu-24.04
-            script: package:linux
+            script: package:linux:x64
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            script: package:linux:arm64
     steps:
       - uses: actions/checkout@v6
         with:
@@ -61,20 +60,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build Harness runtime and web UI
-        run: pnpm run build
+      - name: Build Harness runtime, web UI, and desktop main process
+        run: pnpm run build && pnpm --filter @deepseek-ai/dsh-desktop run build
 
-      - name: Package desktop app
+      - name: Package Windows desktop app
+        if: ${{ startsWith(matrix.target, 'win-') }}
+        shell: pwsh
         run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.script }}
         env:
-          # Signing/notarization credentials are only present on tagged
-          # publish runs; pull-request packaging stays unsigned.
-          CSC_LINK: ${{ secrets.MAC_CERTIFICATE_BASE64 }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
-          APPLE_NOTARIZE: ${{ inputs.publish }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          GH_TOKEN: ''
+
+      - name: Package non-Windows desktop app
+        if: ${{ !startsWith(matrix.target, 'win-') }}
+        run: pnpm --filter @deepseek-ai/dsh-desktop run ${{ matrix.script }}
+        env:
+          GH_TOKEN: ''
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -82,3 +82,29 @@ jobs:
           name: dsh-desktop-${{ matrix.target }}
           path: apps/desktop/release/
           retention-days: 14
+
+  release:
+    name: Publish desktop release
+    if: ${{ github.event_name == 'push' }}
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dsh-desktop-*
+          path: release-assets
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          # This fork publishes only rc builds, so the newest one is what users
+          # should download. GitHub refuses to make a prerelease the "Latest
+          # release", which left /releases/latest — the link in both READMEs —
+          # pinned to an older tag. The in-app updater is unaffected either
+          # way: electron-updater derives allowPrerelease from the running
+          # app's own version and resolves updates from the Atom feed.
+          prerelease: false
+          make_latest: true
+          files: release-assets/*

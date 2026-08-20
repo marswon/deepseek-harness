@@ -15,8 +15,12 @@
 | macOS（Apple Silicon） | `DeepSeek-Harness-*-arm64.dmg` | 暂未签名——首次启动请右键 → **打开** |
 | Windows 10/11（安装版） | `DeepSeek-Harness-Setup-*.exe` | 按用户安装，无需管理员权限 |
 | Windows 10/11（便携版） | `DeepSeek-Harness-*.exe` | 单文件，即下即用 |
+| Linux（Debian/Ubuntu） | `DeepSeek-Harness-*-amd64.deb`、`*-arm64.deb` | 推荐——在 Ubuntu 24.04+ 上唯一能保留沙箱的格式 |
+| Linux（便携版） | `DeepSeek-Harness-*-x86_64.AppImage`、`*-arm64.AppImage` | 面向非 Debian 系发行版；在 Ubuntu 24.04+ 上无沙箱运行 |
 
-安装后应用会在后台自动下载更新，并在重启时完成升级。
+Linux 上请优先选择 `.deb`：Ubuntu 24.04 及以后限制了非特权 user namespace，只有带安装脚本的包才能注册让应用保留沙箱所需的 AppArmor profile。用 `sudo dpkg -i DeepSeek-Harness-*.deb` 安装（若提示依赖缺失，再执行 `sudo apt-get -f install`）。AppImage 无法注册该 profile，因此启动时沙箱是关闭的；arm64 版 AppImage 还需要宿主已安装 `libfuse2`。
+
+安装后应用会在后台自动下载更新，并在重启时完成升级。`.deb` 更新会要求输入密码，因为安装该包需要 root 权限。
 
 ## 界面截图
 
@@ -39,6 +43,7 @@
 
 - macOS 版本尚未使用 Apple 开发者证书签名，首次启动 Gatekeeper 会提示警告；请右键点击应用并选择**打开**。
 - Windows 版本按用户安装，全程不需要管理员权限。
+- Linux `.deb` 包会安装 AppArmor profile，使 renderer 在 Ubuntu 24.04+ 上保持沙箱运行；AppImage 则是无沙箱运行。安装后可用 `aa-status | grep -i deepseek` 确认 profile 已生效。
 - 插件市场中的插件是以 Agent 权限运行的第三方代码；请只安装你信任的插件。
 
 ## 与上游的关系

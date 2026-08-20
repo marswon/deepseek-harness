@@ -3,6 +3,8 @@
 # produced by scripts/stage-runtime.mjs is copied in by afterPack.
 appId: com.deepseek.harness
 productName: DeepSeek Harness
+# Do not derive the Linux executable from the scoped npm package name.
+executableName: DeepSeek-Harness
 directories:
   output: release
 files:
@@ -36,8 +38,8 @@ mac:
     - dmg
     - zip
   hardenedRuntime: true
-  # The release CI passes --config.mac.notarize=true with Apple credentials;
-  # local packaging stays unsigned.
+  # This release channel currently has no Apple Developer credentials, so both
+  # local and CI builds remain ad-hoc signed and are not notarized.
   notarize: false
 win:
   target:
@@ -56,6 +58,44 @@ portable:
   artifactName: DeepSeek-Harness-${version}.${ext}
 linux:
   category: Development
+  # Space-free artifact names, for the same reason as mac (see above).
+  artifactName: DeepSeek-Harness-${version}-${arch}.${ext}
+  # fpm reads the maintainer from `author`, but rejects a bare name; the deb
+  # control file needs `Name <email>`.
+  maintainer: DeepSeek Harness <opensource@deepseek.com>
+  synopsis: Desktop shell for DeepSeek Harness
+  # deb is the primary Ubuntu format: only its maintainer script can install
+  # the AppArmor profile that Ubuntu 24.04+ requires to let Electron's
+  # sandbox open a user namespace (kernel.apparmor_restrict_unprivileged_userns).
+  # An AppImage runs no install script, so it cannot ship that profile and
+  # aborts at startup on those releases unless launched with --no-sandbox.
   target:
-    - AppImage
-    - deb
+    - target: deb
+      arch:
+        - x64
+        - arm64
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+  # GNOME matches a running window to its launcher by app ID. Electron derives
+  # app_id from package.json `desktopName`, so deriving the .desktop filename
+  # and StartupWMClass from the same value is what keeps the dash from showing
+  # a generic placeholder icon instead of ours.
+  syncDesktopName: true
+deb:
+  # 24.04 renamed these to the 64-bit-time_t `t64` packages, which Provide the
+  # old names, so one dependency list covers 22.04 through 26.04. libuuid1 and
+  # libsecret-1-0 come from electron-builder's default list; keep them.
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+    # Electron 37 needs a GBM-capable Mesa to start under native Wayland.
+    - libgbm1

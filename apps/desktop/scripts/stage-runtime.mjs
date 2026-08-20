@@ -16,7 +16,7 @@
  * root from any in-repo target and would prune its devDependencies.
  */
 import { existsSync, globSync } from 'node:fs'
-import { chmod, copyFile, cp, lstat, mkdir, readdir, readFile, readlink, rm, stat } from 'node:fs/promises'
+import { chmod, cp, lstat, mkdir, readdir, readFile, readlink, rm, stat } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -40,7 +40,12 @@ function run(step, command, args) {
   console.log(`stage-runtime: ${step}: ${command} ${args.join(' ')}`)
   // CI=true keeps the legacy deploy's nested `install --production`
   // non-interactive (it purges the staging node_modules first).
-  const result = spawnSync(command, args, { cwd: repoRoot, stdio: 'inherit', env: { ...process.env, CI: 'true' } })
+  const result = spawnSync(command, args, {
+    cwd: repoRoot,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+    env: { ...process.env, CI: 'true' },
+  })
   if (result.status !== 0) throw new Error(`stage-runtime: ${step} failed with exit code ${String(result.status)}.`)
 }
 
@@ -131,7 +136,7 @@ async function verifyStagedPayload(platform) {
     join(staging, 'lib/bin.js'),
     join(staging, 'node_modules/@deepseek-ai/dsh-web-frontend/dist/index.html'),
     join(staging, 'node_modules/node-pty/package.json'),
-    join(staging, platform === 'win32' ? 'node-runtime/node.exe' : 'node-runtime/node'),
+    join(staging, platform === 'win32' ? 'node-runtime/node.exe' : 'node-runtime/bin/node'),
   ]) {
     if (!existsSync(required)) throw new Error(`stage-runtime: staged payload incomplete, missing ${required}.`)
   }
@@ -225,7 +230,10 @@ const ARCH_TOKENS = ['x64', 'arm64', 'ia32', 'arm', 'riscv64', 'ppc64', 's390x',
  * (`koffi.view` in the win32 dialog worker crashes with
  * `Error::New napi_get_last_error_info`, reproduced on darwin too), and
  * node-pty's N-API prebuilds load under any Node 22/24, so a bundled stock
- * Node is strictly safer. Output: staging/node-runtime/{node,node.exe}.
+ * Node is strictly safer. Output: staging/node-runtime/ contains the complete
+ * official Node.js distribution, including Corepack and npm. The plugin market
+ * invokes Corepack to provide pnpm, so shipping node.exe alone leaves fresh
+ * Windows machines unable to install plugins.
  * @param platform - target platform ('darwin' | 'win32' | 'linux').
  * @param arch - target arch ('arm64' | 'x64').
  */
@@ -244,15 +252,14 @@ async function fetchNodeRuntime(platform, arch) {
     run('download', 'curl', ['-fsSL', '-o', archivePath, url])
     const destination = join(staging, 'node-runtime')
     await rm(destination, { recursive: true, force: true })
-    await mkdir(destination, { recursive: true })
+    const distributionDir = join(tmp, `node-v${NODE_RUNTIME_VERSION}-${nodePlatform}-${arch}`)
     if (platform === 'win32') {
-      run('extract', 'unzip', ['-q', archivePath, `node-v${NODE_RUNTIME_VERSION}-${nodePlatform}-${arch}/node.exe`, '-d', tmp])
-      await copyFile(join(tmp, `node-v${NODE_RUNTIME_VERSION}-${nodePlatform}-${arch}/node.exe`), join(destination, 'node.exe'))
+      run('extract', 'unzip', ['-q', archivePath, '-d', tmp])
     } else {
       run('extract', 'tar', ['-xzf', archivePath, '-C', tmp])
-      await copyFile(join(tmp, `node-v${NODE_RUNTIME_VERSION}-${nodePlatform}-${arch}/bin/node`), join(destination, 'node'))
-      await chmod(join(destination, 'node'), 0o755)
     }
+    await cp(distributionDir, destination, { recursive: true, dereference: false, verbatimSymlinks: true })
+    if (platform !== 'win32') await chmod(join(destination, 'bin', 'node'), 0o755)
     console.log(`stage-runtime: bundled Node.js v${NODE_RUNTIME_VERSION} for ${platform}/${arch}`)
   } finally {
     await rm(tmp, { recursive: true, force: true })
@@ -325,10 +332,15 @@ run('deploy', process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', [
   '--config.node-linker=hoisted',
   '--config.auto-install-peers=false',
   '--config.link-workspace-packages=true',
-  // The deploy's deps-status probe otherwise re-runs `install --production`
-  // at the workspace root and prunes development dependencies.
-  '--config.verify-deps-before-run=false',
   staging,
+])
+// pnpm legacy deploy leaves the source workspace production-only. Restore its
+// declared development tools before returning: package scripts invoke
+// electron-builder after staging in the same process tree.
+run('restore workspace tools', process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', [
+  'install',
+  '--frozen-lockfile',
+  '--prod=false',
 ])
 await restoreLegacyHoists()
 await materializeStagedLinks()

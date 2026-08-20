@@ -19,7 +19,7 @@ Electron main (apps/desktop)
      └── http://127.0.0.1:<port>  Harness web UI
 ```
 
-- 开发模式用系统 Node 跑仓库构建产物（`apps/cli/lib/bin.js`）；打包产物在首次启动时把内嵌的 staged 运行时闭包（含按目标平台抓取的官方 Node.js，位于 `dsh-runtime/node-runtime`）复制到桌面数据根目录（`runtimes/<版本>`）并从副本启动，安装目录因此永远不会承载运行中的进程（Windows 会锁定运行中可执行文件所在目录，NSIS 更新曾因此失败）。两者都传 `--expose-internals`，Cordis loader 因此不需要原生 `node-addon-require-builtin` 回退。不复用 Electron 二进制当 Node：Electron 的 V8 sandbox 会让 N-API 裸内存视图致命崩溃（win32 对话框 worker 里的 `koffi.view`）。
+- 开发模式用系统 Node 跑仓库构建产物（`apps/cli/lib/bin.js`）；打包产物首次启动时把运行时闭包和完整的目标平台 Node.js 发行版（Node、npm、npx、Corepack）复制到桌面数据根目录（`runtimes/<版本>`）并从副本启动。安装目录永远不会承载运行中的进程，Windows 更新不会被其锁住；Corepack 会提供 profile 的 pnpm 命令，插件市场不再依赖系统已安装 Node。两者都传 `--expose-internals`，Cordis loader 因此不需要原生 `node-addon-require-builtin` 回退。不复用 Electron 二进制当 Node：Electron 的 V8 sandbox 会让 N-API 裸内存视图致命崩溃（win32 对话框 worker 里的 `koffi.view`）。
 - node-pty 自带 N-API prebuild，ABI 在 Node 22/24 间稳定，打包时无需原生重编（`npmRebuild: false`）。
 - 窗口只放行 loopback HTTP 与本地 shell 页；其余 http(s) 目标交给系统浏览器。renderer 永远拿不到 Node 权限。
 - web profile 自带 [dshmarket](https://github.com/dsh-market/dsh-market)（设置 → 插件市场）：来自 awesome-dsh-plugin 注册表的社区插件市场——一键安装/更新/卸载，无需命令行。插件是第三方代码；市场只安装 awesome 列表收录的来源，且默认不执行其构建脚本。
@@ -30,18 +30,26 @@ Electron main (apps/desktop)
 pnpm run build                                        # repo root first: lib/ + apps/web/dist
 pnpm --filter @deepseek-ai/dsh-desktop run dev        # build the shell and open it
 pnpm --filter @deepseek-ai/dsh-desktop run stage      # materialize the production runtime closure
-pnpm --filter @deepseek-ai/dsh-desktop run package:mac:arm64   # plus :mac:x64 / :win / :linux
+pnpm --filter @deepseek-ai/dsh-desktop run package:mac:arm64   # plus :mac:x64 / :win / :linux:x64 / :linux:arm64
 pnpm --filter @deepseek-ai/dsh-desktop run package:win:cross   # unsigned Win x64 build from a non-Windows host
 ```
 
-打包要求宿主平台/架构与目标一致（`scripts/verify-target.mjs` 强制），因为 node-pty prebuild 与 landlock 启动器按平台分发。macOS 产物默认不签名；发布 CI 凭 Apple 凭据开启公证。`package:win:cross` 是有意的例外：它用 `stage:win` 从 registry 抓取 win32/x64 平台二进制包，并以 `signAndEditExecutable=false` 在任意宿主上构建未签名的 NSIS/Portable 产物（rcedit 离开 Windows 需要 wine）；随后 `scripts/after-pack.cjs` 用 resedit 把 `build/icon.ico` 与产品版本写进 exe，安装后的应用不再显示 Electron 默认图标与元数据。
+打包要求宿主平台/架构与目标一致（`scripts/verify-target.mjs` 强制），因为 node-pty prebuild 与 landlock 启动器按平台分发。当前发布渠道没有配置 Apple Developer 凭据，因此 macOS 产物使用 ad-hoc 签名且未公证，安装或替换后会触发 Gatekeeper 提示。`package:win:cross` 是有意的例外：它用 `stage:win` 从 registry 抓取 win32/x64 平台二进制包，并以 `signAndEditExecutable=false` 在任意宿主上构建未签名的 NSIS/Portable 产物（rcedit 离开 Windows 需要 wine）；随后 `scripts/after-pack.cjs` 用 resedit 把 `build/icon.ico` 与产品版本写进 exe，安装后的应用不再显示 Electron 默认图标与元数据。
 
-Release tag 必须是带 `v` 前缀的 semver（如 `v0.1.0-rc.7`），不能用 `dsh-desktop-v*` 这类带命名空间的 tag：electron-updater 的 GitHub provider 会用 `semver.valid` 校验 releases feed 里的每个 tag，全部不合法时只会静默报 "No published versions on GitHub"。electron-updater 只负责版本检查和下载，安装交接由应用自己接管：Windows 上外壳先强杀更新 pending 目录里的僵尸安装器（僵尸进程持有按应用的安装器互斥锁，会让之后的每次尝试都直接中止并重新弹出它自己那个"无法关闭"对话框），然后 detached 启动 pending 的 NSIS 安装器，spawn 成功后才退出；同时 `build/installer.nsh` 把 NSIS 的运行进程检查替换为不弹窗的强杀。macOS 上应用不会原地自更新：ad-hoc 签名的 designated requirement 是逐二进制的 cdhash，Squirrel.Mac 会用它校验每个更新包，因此更新器改为把 dmg 下载到 `userData/updates/<版本>` 并打开，由用户拖拽替换。
+Release tag 必须是带 `v` 前缀的 semver（如 `v0.1.0-rc.34`），不能用 `dsh-desktop-v*` 这类带命名空间的 tag：electron-updater 的 GitHub provider 会用 `semver.valid` 校验 releases feed 里的每个 tag，全部不合法时只会静默报 "No published versions on GitHub"。推送该 tag 会运行发布矩阵并发布产物。electron-updater 只负责版本检查和下载，安装交接由应用自己接管：Windows 上外壳先强杀 pending 目录里的僵尸安装器，再启动一个 detached PowerShell 等待器，确认 Electron 退出后才运行 NSIS 安装器；`build/installer.nsh` 也会等待所有 Electron 子进程消失后再替换文件。macOS 上应用把 dmg 下载到 `userData/updates/<版本>` 并打开，由用户拖拽替换；由于产物只有 ad-hoc 签名，替换后的应用仍会触发 Gatekeeper 提示。Linux 上直接沿用 electron-updater 自己的 AppImage/deb 安装流程，外壳只负责先停掉 Harness 子进程；deb 更新会弹出 pkexec/sudo 密码提示。
+
+## Linux
+
+**deb 是首选格式。** Ubuntu 24.04 及以后默认设置 `kernel.apparmor_restrict_unprivileged_userns=1`，这会阻止 Electron 沙箱创建 user namespace。只有带 maintainer 脚本的包才能装回授权所需的 AppArmor profile，因此 deb 的 `after-install` 钩子会写入 `/etc/apparmor.d/DeepSeek-Harness`（在 AppArmor 早于 `abi/4.0` 的发行版上会自动跳过，例如 22.04）。AppImage 不运行安装脚本，因此无法携带该 profile：electron-builder 的启动脚本会探测 `unshare -Ur` 并回退到 `--no-sandbox`，应用能启动，但 renderer 不在沙箱中运行。有选择时优先用 deb。
+
+两种格式都构建 x64 与 arm64。arm64 有两点专属注意事项：AppImage 的 FUSE2 工具集只提供 x64/ia32 的运行时库，因此 arm64 AppImage 需要宿主已安装 `libfuse2`；CI 在 `ubuntu-24.04-arm` 上原生构建 arm64 而非交叉编译——glibc 向后兼容但不向前兼容，在 24.04 上构建才能保证产物在 26.04 上可运行。
+
+Wayland：Electron 37 的 `--ozone-platform` 仍默认为 `x11`，因此外壳传入 `--ozone-platform-hint=auto` 以在 Wayland 会话下原生运行（`src/main/linux-display.ts`）——Electron 38 会把它变成默认值。显式的 `--ozone-platform`/`--ozone-platform-hint` 参数或 `ELECTRON_OZONE_PLATFORM_HINT` 始终优先，因此针对特定合成器的手动规避不会被覆盖。
 
 ## 目录结构
 
 ```
-src/main/     Electron main process: harness lifecycle, window, menu, updates, shell page
+src/main/     Electron main process: harness lifecycle, window, menu, updates, shell page, Linux display hint
 src/preload/  sandboxed-renderer bridge (shell-page actions only)
 scripts/      runtime staging, target verification, and the afterPack runtime copy
 tests/        vitest specs for the electron-free logic plus a built-runtime boot smoke

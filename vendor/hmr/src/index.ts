@@ -3,7 +3,7 @@ import type { Dict } from '@deepseek-ai/cosmokit'
 import { ModuleLoader, type ModuleJob, type ResolveResult } from '@deepseek-ai/cordis-plugin-loader'
 import type { Include } from '@deepseek-ai/cordis-plugin-include'
 import { FSWatcher, watch, type ChokidarOptions } from 'chokidar'
-import { dirname, relative, resolve } from 'node:path'
+import { dirname, relative, resolve, sep } from 'node:path'
 import { realpath, stat } from 'node:fs/promises'
 import { handleError } from './error.ts'
 import type {} from '@deepseek-ai/cordis-plugin-timer'
@@ -83,6 +83,33 @@ async function findWatchRoot(filename: string): Promise<{ filename: string; root
   }
 }
 
+/**
+ * Restrict an exact-config watch to the target file and the directories leading to it.
+ *
+ * Chokidar's `depth` bounds recursion but still enumerates every entry of each
+ * visited directory, so a watch root that contains `node_modules` costs one
+ * inotify handle per installed package and exhausts `fs.inotify.max_user_watches`
+ * on Linux. A profile directory holds both `cordis.patch.yml` and the profile's
+ * installed dependencies, making that the normal case rather than an edge one.
+ * @param watchFilename - Absolute realpath-resolved config path being watched.
+ * @param root - Absolute watch root returned by {@link findWatchRoot}.
+ * @returns a chokidar `ignored` predicate keeping only the path chain to the target.
+ */
+function exactConfigIgnored(watchFilename: string, root: string): (path: string) => boolean {
+  const chain = new Set<string>()
+  for (let current = watchFilename; current.startsWith(root); current = dirname(current)) {
+    chain.add(current)
+    if (current === root) break
+  }
+  return (path: string): boolean => {
+    const observed = resolve(path)
+    if (chain.has(observed)) return false
+    // A directory above the target may still be created later; keep the
+    // prefixes that could become part of the chain.
+    return !watchFilename.startsWith(observed + sep)
+  }
+}
+
 class Hmr extends Service {
   static inject = ['loader', 'timer']
 
@@ -125,6 +152,26 @@ class Hmr extends Service {
   }
 
   /**
+   * Report the filesystem paths an exact-config watch currently holds open.
+   *
+   * Each entry costs one operating-system watch handle, so this is the quantity
+   * that must stay bounded next to an installed dependency tree.
+   * @param filename - Config path as passed to {@link Hmr.registerConfig}.
+   * @returns sorted absolute directory and file paths, empty when unregistered.
+   */
+  watchedConfigPaths(filename: string): string[] {
+    const registration = this.configs.get(resolve(this.baseDir, filename))
+    if (!registration) return []
+    const watched = registration.watcher.getWatched()
+    const paths: string[] = []
+    for (const [directory, entries] of Object.entries(watched)) {
+      paths.push(resolve(directory))
+      for (const entry of entries) paths.push(resolve(directory, entry))
+    }
+    return [...new Set(paths)].sort()
+  }
+
+  /**
    * Watch one exact config path outside the configured module roots.
    * @param filename - Config path, resolved against the HMR base directory.
    * @param refresh - Refresh callback run serially on add, change, or unlink.
@@ -143,7 +190,7 @@ class Hmr extends Service {
       ...this.config,
       cwd: undefined,
       depth,
-      ignored: undefined,
+      ignored: exactConfigIgnored(watchFilename, root),
       ignoreInitial: false,
     })
     const registration = { watcher }

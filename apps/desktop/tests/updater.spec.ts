@@ -120,7 +120,7 @@ describe('setupAutoUpdater', () => {
     expect(showMessageBox).toHaveBeenCalledWith({ message: 'This build has no update feed configured.' })
   })
 
-  it('on win32 Restart stops the child, sweeps stale installers, spawns the pending installer, then quits', async () => {
+  it('on win32 Restart stops the child, sweeps stale installers, schedules the pending installer after exit, then quits', async () => {
     stubPlatform('win32')
     const localAppData = await scratchDir()
     process.env['LOCALAPPDATA'] = localAppData
@@ -142,12 +142,15 @@ describe('setupAutoUpdater', () => {
     showMessageBox.mockResolvedValue({ response: 0 })
     handlers.get('update-downloaded')?.({ version: '0.2.0', path: 'DeepSeek-Harness-Setup-0.2.0.exe', files: [] })
     await vi.waitFor(() => { expect(order).toEqual(['prepare', 'quit']) })
-    const installerSpawn = spawn.mock.calls.find(call => String(call[0]).endsWith('DeepSeek-Harness-Setup-0.2.0.exe'))
-    expect(installerSpawn?.[1]).toEqual(['--updated', '--force-run'])
-    expect(installerSpawn?.[2]).toMatchObject({ detached: true })
-    // The stale-installer sweep ran powershell against the pending directory first.
-    const sweep = spawn.mock.calls.find(call => String(call[0]) === 'powershell.exe')
-    expect(String(sweep?.[1]?.[2])).toContain('@deepseek-aidsh-desktop-updater')
+    // The detached waiter starts the installer only after the Electron PID exits.
+    const waiter = spawn.mock.calls.find(call => String(call[0]) === 'powershell.exe'
+      && String((call[1] as string[]).at(-1)).includes('Start-Process'))
+    expect(String((waiter?.[1] as string[] | undefined)?.at(-1))).toContain('DeepSeek-Harness-Setup-0.2.0.exe')
+    expect(waiter?.[2]).toMatchObject({ detached: true, windowsHide: true })
+    // The stale-installer sweep ran against the pending directory first.
+    const sweep = spawn.mock.calls.find(call => String(call[0]) === 'powershell.exe'
+      && String((call[1] as string[]).at(-1)).includes('Get-CimInstance'))
+    expect(String((sweep?.[1] as string[] | undefined)?.at(-1))).toContain('@deepseek-aidsh-desktop-updater')
     expect(quitAndInstall).not.toHaveBeenCalled()
   })
 
@@ -190,6 +193,78 @@ describe('setupAutoUpdater', () => {
     await settle()
     expect(quitAndInstall).not.toHaveBeenCalled()
     expect(appQuit).not.toHaveBeenCalled()
+  })
+
+  it('on linux Restart stops the child then hands the install to electron-updater', async () => {
+    stubPlatform('linux')
+    // No package-type marker: an AppImage build, electron-updater's default.
+    stubResourcesPath(await scratchDir())
+    const order: string[] = []
+    const lines: string[] = []
+    setupAutoUpdater({
+      isPackaged: true,
+      updateFeedPresent: true,
+      log: (line) => { lines.push(line) },
+      prepareForInstall: async () => { order.push('prepare') },
+    })
+    quitAndInstall.mockImplementation(() => { order.push('quitAndInstall') })
+    showMessageBox.mockResolvedValue({ response: 0 })
+    handlers.get('update-downloaded')?.({ version: '0.2.0', files: [] })
+    await vi.waitFor(() => { expect(order).toEqual(['prepare', 'quitAndInstall']) })
+    // The Linux branch ran, not the Windows pending-installer handoff, which
+    // would reach for %LOCALAPPDATA% and powershell.exe instead.
+    expect(lines).toContain('linux package type: appimage')
+    expect(lines).toContain('installing appimage update: 0.2.0')
+    expect(spawn).not.toHaveBeenCalled()
+    expect(appQuit).not.toHaveBeenCalled()
+  })
+
+  it('on linux an AppImage restart prompt does not mention a password', async () => {
+    stubPlatform('linux')
+    stubResourcesPath(await scratchDir())
+    setupAutoUpdater({ isPackaged: true, updateFeedPresent: true, log: () => {} })
+    showMessageBox.mockResolvedValue({ response: 1 })
+    handlers.get('update-downloaded')?.({ version: '0.2.0', files: [] })
+    await settle()
+    expect(showMessageBox.mock.calls[0]?.[0]).toMatchObject({
+      detail: 'Version 0.2.0 has been downloaded. Restart to apply it.',
+    })
+  })
+
+  it('on linux a deb install warns that the system will ask for a password', async () => {
+    stubPlatform('linux')
+    const resources = await scratchDir()
+    await writeFile(join(resources, 'package-type'), 'deb\n')
+    stubResourcesPath(resources)
+    setupAutoUpdater({ isPackaged: true, updateFeedPresent: true, log: () => {} })
+    showMessageBox.mockResolvedValue({ response: 1 })
+    handlers.get('update-downloaded')?.({ version: '0.2.0', files: [] })
+    await settle()
+    expect(String(showMessageBox.mock.calls[0]?.[0]?.detail)).toContain('ask for your password')
+  })
+
+  it('on linux Later leaves the app running', async () => {
+    stubPlatform('linux')
+    stubResourcesPath(await scratchDir())
+    setupAutoUpdater({ isPackaged: true, updateFeedPresent: true, log: () => {} })
+    showMessageBox.mockResolvedValue({ response: 1 })
+    handlers.get('update-downloaded')?.({ version: '0.2.0', files: [] })
+    await settle()
+    expect(quitAndInstall).not.toHaveBeenCalled()
+    expect(appQuit).not.toHaveBeenCalled()
+  })
+
+  it('on linux a refused check reports that updates are unavailable', async () => {
+    stubPlatform('linux')
+    stubResourcesPath(await scratchDir())
+    // isUpdaterActive() false (an AppImage without its runtime) resolves null
+    // without emitting any event, so the menu would otherwise look dead.
+    checkForUpdates.mockResolvedValue(null as never)
+    const check = setupAutoUpdater({ isPackaged: true, updateFeedPresent: true, log: () => {} })
+    check()
+    await vi.waitFor(() => { expect(showMessageBox).toHaveBeenCalledOnce() })
+    expect(showMessageBox.mock.calls[0]?.[0]).toMatchObject({ message: 'Updates are not available for this build' })
+    expect(String(showMessageBox.mock.calls[0]?.[0]?.detail)).toContain('AppImage')
   })
 
   it('on darwin Download fetches the dmg into userData and opens it', async () => {

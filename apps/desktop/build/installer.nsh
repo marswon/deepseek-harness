@@ -6,24 +6,49 @@
 ; with a path, so the installer looped on "cannot be closed" forever with
 ; nothing actually running — and its Stop-Process sweep then hit unrelated
 ; processes. Since 0.1.0-rc.12 the Harness runtime runs from the user data
-; directory, so only the Electron exe itself can hold the install directory
-; open, and the app already quits itself before the installer starts
-; (prepareForInstall). Kill any straggler by exact image name — taskkill needs
-; no WMI, works when the process is gone (prints an error, harmless), and we
-; never prompt.
+; directory, so only Electron can hold the install directory open. Older NSIS
+; installers can remain in electron-updater's pending directory and retain the
+; installer mutex. This macro clears those stale siblings while excluding its
+; own parent, then kills and polls an exact app-image straggler before
+; replacement. taskkill needs no WMI, works when the process is gone (prints an
+; error, harmless), and never prompts.
 ;
 ; electron-builder's allowOnlyOneInstallerInstance.nsh picks this up via
 ; `!ifmacrodef customCheckAppRunning`, replacing the stock macro for both the
 ; installer and the uninstaller.
 !macro customCheckAppRunning
+  !define /redef dsh_wait_label ${__LINE__}
   ${if} ${isUpdated}
-    # The app quits itself before the installer starts; give it a beat.
+    # The app's detached updater waiter starts this installer after Electron exits.
     Sleep 500
   ${endIf}
-  nsExec::Exec `"$SYSDIR\cmd.exe" /C taskkill /IM "${APP_EXECUTABLE_FILENAME}"`
+  # electron-updater launches NSIS from this cache. Exclude the current NSIS
+  # process (the PowerShell process's parent) while clearing earlier attempts.
+  nsExec::Exec `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "$$parent = (Get-CimInstance Win32_Process -Filter ('ProcessId=' + $$PID)).ParentProcessId; Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -like ($$env:LOCALAPPDATA + '\@deepseek-aidsh-desktop-updater\pending\*') -and $$_.ProcessId -ne $$parent } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
   Pop $0
-  Sleep 1000
-  nsExec::Exec `"$SYSDIR\cmd.exe" /C taskkill /F /IM "${APP_EXECUTABLE_FILENAME}"`
+  nsExec::Exec `"$SYSDIR\cmd.exe" /C taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}"`
   Pop $0
-  Sleep 300
+  # Older releases launched Node from $INSTDIR. Kill every remaining process
+  # loaded from that directory, but never use an empty root as a path prefix.
+  ${if} $INSTDIR != ""
+    nsExec::Exec `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "$$root = '$INSTDIR'; Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -and $$_.ExecutablePath.StartsWith($$root, [System.StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
+    Pop $0
+  ${endIf}
+  # taskkill returning does not guarantee that Windows has released every
+  # Electron child handle. Poll the exact image name before replacing files.
+  StrCpy $0 0
+  dsh_wait_for_app_exit_${dsh_wait_label}:
+  nsExec::ExecToStack `"$SYSDIR\cmd.exe" /C tasklist /FI "IMAGENAME eq ${APP_EXECUTABLE_FILENAME}" /NH ^| findstr /I /C:"${APP_EXECUTABLE_FILENAME}"`
+  Pop $1
+  # ExecToStack also pushes the captured output text after the return code;
+  # draining it keeps this loop from leaking up to 20 strings onto the shared
+  # NSIS stack, which would desync an unrelated unconditional Pop downstream.
+  Pop $2
+  StrCmp $1 1 dsh_app_exited_${dsh_wait_label}
+  IntOp $0 $0 + 1
+  IntCmp $0 20 dsh_app_exited_${dsh_wait_label}
+  Sleep 250
+  Goto dsh_wait_for_app_exit_${dsh_wait_label}
+  dsh_app_exited_${dsh_wait_label}:
+  !undef dsh_wait_label
 !macroend

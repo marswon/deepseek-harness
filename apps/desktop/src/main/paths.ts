@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 /**
@@ -16,6 +16,8 @@ export interface DesktopPaths {
    * child starts here so the UI never opens with a directory prompt.
    */
   readonly launchRoot: string
+  /** Desktop-owned Cordis overlay applied after user profile patches. */
+  readonly desktopPatchFile: string
   /** Directory receiving the Harness child log. */
   readonly logDir: string
   /** Harness child stdout/stderr log, viewed from the recovery page and menu. */
@@ -43,16 +45,26 @@ export function resolveDesktopPaths(userData: string): DesktopPaths {
     userData,
     dshHome,
     launchRoot: join(userData, 'launch-root'),
+    desktopPatchFile: join(userData, 'desktop.patch.yml'),
     logDir,
     logFile: join(logDir, 'harness.log'),
     runtimeRoot: join(userData, 'runtimes'),
   }
 }
 
+const DESKTOP_PATCH = `- id: dsh-market
+  config:
+    profile: web
+    allowRestart: false
+`
+
 /**
- * Create every directory of the layout. Safe to call on every launch.
- * @param paths - the layout to materialize.
+ * Create every directory of the layout and refresh the app-owned overlay. The
+ * overlay keeps dshmarket from starting an unmanaged replacement web process;
+ * the Electron menu owns the Harness restart instead.
+ * @param paths - the desktop layout to materialize.
  */
 export async function ensureDesktopPaths(paths: DesktopPaths): Promise<void> {
   await Promise.all([paths.dshHome, paths.launchRoot, paths.logDir, paths.runtimeRoot].map(dir => mkdir(dir, { recursive: true })))
+  await writeFile(paths.desktopPatchFile, DESKTOP_PATCH, 'utf8')
 }

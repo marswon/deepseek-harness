@@ -1,6 +1,6 @@
 import { app, dialog, net, shell } from 'electron'
 import { spawn } from 'node:child_process'
-import { createWriteStream, existsSync } from 'node:fs'
+import { createWriteStream, existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -49,6 +49,8 @@ export interface UpdaterOptions {
  *   the zombie's own dialog).
  * - macOS: ad-hoc signed builds can never pass Squirrel.Mac's signature
  *   check, so the dmg is downloaded and opened for a manual drag-replace.
+ * - Linux: electron-updater's own AppImage/deb install is used as-is (see
+ *   {@link setupLinuxUpdater}); only the Harness child is stopped first.
  * A manual check reports "up to date" when nothing is found.
  * @param options - updater wiring.
  * @returns a manual check function for the menu.
@@ -93,6 +95,12 @@ export function setupAutoUpdater(options: UpdaterOptions): () => void {
     return check
   }
 
+  if (process.platform === 'linux') return setupLinuxUpdater(options)
+
+  // Windows installation is owned by spawnInstallerAfterAppExit(). Leaving this
+  // true starts a second silent NSIS process during app.quit(), which races the
+  // detached waiter and can relaunch the old version without applying the update.
+  autoUpdater.autoInstallOnAppQuit = false
   autoUpdater.on('update-downloaded', (info) => {
     void dialog
       .showMessageBox({
@@ -107,6 +115,84 @@ export function setupAutoUpdater(options: UpdaterOptions): () => void {
       })
   })
   return check
+}
+
+/**
+ * The packaging format a Linux build was installed from. electron-builder
+ * writes `resources/package-type` only for the fpm targets (deb/rpm/pacman);
+ * AppImage is electron-updater's default and leaves no marker.
+ * @returns the marker's contents, or 'appimage' when absent.
+ */
+function linuxPackageType(): string {
+  try {
+    return readFileSync(join(process.resourcesPath, 'package-type'), 'utf8').trim() || 'appimage'
+  } catch {
+    // No marker file: an AppImage build, which never writes one.
+    return 'appimage'
+  }
+}
+
+/**
+ * Wire the Linux update flow. electron-updater already selects
+ * AppImageUpdater or DebUpdater from `resources/package-type`, so the install
+ * itself needs no custom handoff — unlike Windows, nothing here may touch the
+ * NSIS pending-installer path or spawn powershell.exe. Two Linux-only facts
+ * shape this branch:
+ * - An AppImage that is not running through its own runtime has no `APPIMAGE`
+ *   environment variable, so `isUpdaterActive()` is false and
+ *   `checkForUpdates()` resolves null without emitting any event. A manual
+ *   check would look like a dead menu item, so report it instead.
+ * - A deb install runs dpkg through pkexec/sudo, which raises a system
+ *   authentication prompt. The restart dialog says so; AppImage replaces the
+ *   file in place and needs no elevation.
+ * @param options - updater wiring.
+ * @returns a manual check function for the menu.
+ */
+function setupLinuxUpdater(options: UpdaterOptions): () => void {
+  const packageType = linuxPackageType()
+  const isAppImage = packageType === 'appimage'
+  options.log(`linux package type: ${packageType}`)
+  // The install is owned by quitAndInstall() below, once the Harness child has
+  // been stopped; installing again on quit would run dpkg or the AppImage
+  // replacement a second time.
+  autoUpdater.autoInstallOnAppQuit = false
+  autoUpdater.on('update-downloaded', (info) => {
+    void dialog
+      .showMessageBox({
+        type: 'info',
+        message: 'Update ready',
+        detail: isAppImage
+          ? `Version ${info.version} has been downloaded. Restart to apply it.`
+          : `Version ${info.version} has been downloaded. Restart to apply it; the system will ask for your password to install the package.`,
+        buttons: ['Restart', 'Later'],
+      })
+      .then(async ({ response }) => {
+        if (response !== 0) return
+        // The Harness child holds the staged runtime open under the data root.
+        // Stop it before the installer replaces the application files.
+        await (options.prepareForInstall ?? (() => Promise.resolve()))().catch((error: unknown) => {
+          options.log(`prepare for install failed: ${error instanceof Error ? error.message : String(error)}`)
+        })
+        options.log(`installing ${packageType} update: ${info.version}`)
+        autoUpdater.quitAndInstall()
+      })
+  })
+  return () => {
+    autoUpdater.checkForUpdates().then((result) => {
+      if (result !== null) return
+      // isUpdaterActive() refused the check; no updater event will follow.
+      options.log('update check skipped: this build has no active update feed')
+      void dialog.showMessageBox({
+        message: 'Updates are not available for this build',
+        detail: isAppImage
+          ? 'Automatic updates need the AppImage to run through its own runtime. Download the latest AppImage from the releases page instead.'
+          : 'This installation cannot check for updates. Install the latest package from the releases page instead.',
+        buttons: ['OK'],
+      })
+    }).catch((error: unknown) => {
+      options.log(`update check failed: ${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
 }
 
 /**
@@ -153,6 +239,33 @@ async function killStaleInstallers(pendingDir: string): Promise<void> {
 }
 
 /**
+ * Start the NSIS installer only after this Electron process is gone. The
+ * installer cannot reliably race `app.quit()`: Windows can keep renderer and
+ * utility processes alive after the call returns, which reopens NSIS's
+ * running-application dialog. A detached PowerShell waiter has no handles
+ * inherited from the app and starts the installer after the process id exits.
+ * @param installer - absolute path of the downloaded NSIS executable.
+ * @returns whether the waiter process was spawned.
+ */
+async function spawnInstallerAfterAppExit(installer: string): Promise<boolean> {
+  const escapedInstaller = installer.replace(/'/g, "''")
+  const command = `while (Get-Process -Id ${String(process.pid)} -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 200 }; `
+    + `Start-Process -FilePath '${escapedInstaller}' -ArgumentList @('--updated', '--force-run')`
+  return await new Promise<boolean>((resolve) => {
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', command], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    child.once('error', () => { resolve(false) })
+    child.once('spawn', () => {
+      child.unref()
+      resolve(true)
+    })
+  })
+}
+
+/**
  * Hand the downloaded update to the NSIS installer: stop the Harness child,
  * clear stale installers, spawn the pending installer detached, and quit only
  * once the spawn succeeds. Falls back to quitAndInstall when the pending
@@ -169,24 +282,12 @@ async function installWindowsUpdate(info: UpdateInfo, options: UpdaterOptions): 
   if (installer !== null) {
     await killStaleInstallers(dirname(installer))
     if (existsSync(installer)) {
-      const spawned = await new Promise<boolean>((resolve) => {
-        const child = spawn(installer, ['--updated', '--force-run'], {
-          detached: true,
-          stdio: 'ignore',
-          windowsHide: false,
-        })
-        child.once('error', () => { resolve(false) })
-        child.once('spawn', () => {
-          child.unref()
-          resolve(true)
-        })
-      })
-      if (spawned) {
-        options.log(`installer spawned: ${installer}`)
+      if (await spawnInstallerAfterAppExit(installer)) {
+        options.log(`installer scheduled after app exit: ${installer}`)
         app.quit()
         return
       }
-      options.log(`failed to spawn installer: ${installer}`)
+      options.log(`failed to schedule installer: ${installer}`)
     } else {
       options.log(`pending installer missing: ${installer}`)
     }
