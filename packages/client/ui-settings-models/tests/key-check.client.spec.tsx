@@ -3,14 +3,16 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Schema from '@deepseek-ai/schemastery'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
 import type { RpcResponse, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+import { SettingsDescribeMirror } from '@deepseek-ai/dsh-client-ui-settings/src/client/settings-mirror.ts'
 import { keyCheckFailureText } from '../src/client/KeyCheck.tsx'
 import { ModelsSection } from '../src/client/ModelsSection.tsx'
-import type { ModelsSectionInjected } from '../src/client/ModelsSection.tsx'
+import type { ModelsSectionProps } from '../src/client/ModelsSection.tsx'
 import { ProviderEditor } from '../src/client/ProviderEditor.tsx'
 import { ModelsSettingsStore } from '../src/client/store.ts'
 import { en } from '../src/client/locales.ts'
+import { settingsSchema } from './settings-schema.client.ts'
 
 afterEach(cleanup)
 
@@ -103,6 +105,7 @@ function mountEditor(options: {
       displayName={options.displayName ?? 'DeepSeek'}
       {...options.consoleUrl === undefined ? {} : { consoleUrl: options.consoleUrl }}
       namespace={options.namespace ?? deepSeekNamespace()}
+      schema={settingsSchema}
       settingsPath={options.settingsPath ?? []}
       api={face as never}
       t={t}
@@ -291,6 +294,7 @@ describe('get-a-key guidance', () => {
         consoleUrl="https://platform.deepseek.com/api_keys"
         hideTitle
         namespace={deepSeekNamespace()}
+        schema={settingsSchema}
         settingsPath={[]}
         api={face as never}
         t={t}
@@ -371,12 +375,13 @@ describe('guidance through the Models page', () => {
         unset: vi.fn(),
       },
     }
-    const controller = new ModelsSettingsStore(face as never)
+    const controller = new ModelsSettingsStore(face as never, settingsSchema, new SettingsDescribeMirror(face as never))
     await controller.load()
-    const injected: ModelsSectionInjected = {
+    const injected: ModelsSectionProps = {
       controller,
       useSnapshot: bindSnapshotSelector(controller.store),
       api: face as never,
+      schema: settingsSchema,
       t,
     }
     render(<ModelsSection {...injected} />)

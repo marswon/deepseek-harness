@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-web-react'
+import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import type {
   SessionId, SessionListState, SessionSummary, WorkspaceId, WorkspaceListState, WorkspaceView,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -82,9 +82,12 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     isLoopback: true,
     openWorkspacePath: vi.fn(),
     useHostDescription: bindSnapshotSelector({
-      getSnapshot: () => ({ canOpenPath: true }),
+      getSnapshot: () => ({
+        version: '0', cwd: '/tmp', attachedSessions: 0, home: '/home/u',
+        canOpenPath: true, canRevealPath: true,
+      }),
       subscribe: () => () => {},
-    } as never),
+    }),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
     renderSlot: ((_name: string, owner: { open: boolean }) => (owner.open ? <div data-testid="directory-flow" /> : null)) as never,
     t,
@@ -101,6 +104,27 @@ function rerender(b: ReturnType<typeof mount>, overrides: Partial<WorkspaceBrows
 }
 
 describe('WorkspaceBrowser', () => {
+  it('workspace hover card shows a POSIX home descendant as ~', () => {
+    vi.useFakeTimers()
+    try {
+      mount({
+        useWorkspaces: hook(workspaceState([{
+          ...workspace('project', []),
+          path: '/home/u/Documents/project',
+          title: 'Project',
+        }])),
+        useHostDescription: selector => selector({
+          version: '0', cwd: '/tmp', attachedSessions: 0, home: '/home/u', canOpenPath: false, canRevealPath: false,
+        }),
+      })
+      fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
+      act(() => { vi.advanceTimersByTime(500) })
+      expect(screen.getByText('~/Documents/project')).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('prunes deleted Workspace view state only after the Workspace baseline is ready', async () => {
     const pending = {
       ...workspaceState([]),
@@ -747,6 +771,28 @@ describe('WorkspaceBrowser', () => {
       // Wide search button is decorative (tabIndex -1, no expand call).
       fireEvent.click(screen.getByRole('button', { name: '搜索会话' }))
       expect(expandSidebar).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the rail-opened search expanded when the initiating click reaches document', () => {
+    vi.useFakeTimers()
+    try {
+      const b = mount({ wide: false })
+      fireEvent.click(screen.getByRole('button', { name: '搜索会话' }))
+      rerender(b, { wide: true })
+      // In the browser the rail click keeps bubbling to document after the
+      // wide flip mounted the outside-click listener, with the unmounted rail
+      // button as its target — outside searchRoot. It must not dismiss the
+      // search it just opened.
+      fireEvent.click(document.body)
+      expect(screen.getByRole('button', { name: '搜索会话' }).getAttribute('aria-expanded')).toBe('true')
+      act(() => { vi.advanceTimersByTime(300) })
+      expect(document.activeElement).toBe(screen.getByPlaceholderText('搜索会话…'))
+      // The gesture has settled: outside clicks dismiss the search again.
+      fireEvent.click(document.body)
+      expect(screen.getByRole('button', { name: '搜索会话' }).getAttribute('aria-expanded')).toBe('false')
     } finally {
       vi.useRealTimers()
     }

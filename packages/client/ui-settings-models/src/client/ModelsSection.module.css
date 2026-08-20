@@ -604,6 +604,12 @@ select.input {
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
+.candidateActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+
 /* The candidate picker as a bordered sheet of rows, not a bare list: the
    frame separates it from the dialog chrome, and each row takes the menu
    vocabulary (hover fill, accent fill while picked). */

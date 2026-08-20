@@ -20,6 +20,7 @@ import { KeyCheckButton, KeyCheckStatus, KeyGuidance, useKeyCheck } from './KeyC
 import { refFor } from './ProviderEditor.tsx'
 import type { ModelsSettingsState, ModelsSettingsStore } from './store.ts'
 import { messageOf, onboardingReadiness } from './store.ts'
+import type { SettingsSchemaOperations } from './schema-operations.ts'
 import type { en } from './locales.ts'
 import { OnboardingModal } from './OnboardingModal.tsx'
 import styles from './DeepSeekOnboardingDialog.module.css'
@@ -34,6 +35,8 @@ export interface DeepSeekOnboardingInjected {
   controller: ModelsSettingsStore
   /** Existing wire face reused by the Models credential editor. */
   api: Pick<IApiClient, 'settings' | 'credentials' | 'llm'>
+  /** Settings schema and immutable path callbacks. */
+  schema: SettingsSchemaOperations
   /** Feature copy. */
   t: (key: keyof typeof en) => string
 }
@@ -64,7 +67,7 @@ const STEP_LABELS: readonly (keyof typeof en)[] = [
  * @returns the onboarding modal or null when onboarding needs no intervention.
  */
 export function DeepSeekOnboardingDialog(props: DeepSeekOnboardingDialogProps): ReactNode {
-  const { complete, openSection, controller, useModels, api, t } = props
+  const { complete, openSection, controller, useModels, api, schema, t } = props
   const state = useModels(snapshot => snapshot)
   const readiness = onboardingReadiness(state)
   const [step, setStep] = useState<WizardStep>(1)
@@ -129,7 +132,7 @@ export function DeepSeekOnboardingDialog(props: DeepSeekOnboardingDialogProps): 
     setFailure(undefined)
     try {
       const stored = await api.credentials.set({
-        ref: refFor(namespace, row.entry.settingsPath, row.entry.provider),
+        ref: refFor(schema, namespace, row.entry.settingsPath, row.entry.provider),
         value: keyValue,
       })
       if (!stored.result.ok) {
