@@ -1,12 +1,21 @@
+import { spawnSync } from 'node:child_process'
 import { lstat, mkdtemp, mkdir, readFile, readdir, readlink, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buildHarnessLaunch, bundledNodePath, harnessBinPath, parseReadyUrl, resolveHarnessRuntime,
   stagePackagedRuntime,
 } from '../src/main/runtime.ts'
 import { resolveDesktopPaths } from '../src/main/paths.ts'
+
+vi.mock('node:child_process', async importOriginal => ({
+  ...await importOriginal<typeof import('node:child_process')>(),
+  spawnSync: vi.fn(),
+}))
+
+/** The platform-arch-keyed directory name staging targets. */
+const stagedName = (version: string): string => `${version}-${process.platform}-${process.arch}`
 
 const paths = resolveDesktopPaths('/userdata')
 
@@ -103,6 +112,11 @@ async function makeBundledRuntime(root: string): Promise<string> {
 
 describe('stagePackagedRuntime', () => {
   const sandboxes: string[] = []
+  beforeEach(() => {
+    // Default probe: the staged Node answers --version.
+    vi.mocked(spawnSync).mockReset()
+    vi.mocked(spawnSync).mockReturnValue({ status: 0, stdout: 'v22.21.1\n' } as never)
+  })
   afterEach(async () => {
     await Promise.all(sandboxes.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
   })
@@ -118,9 +132,30 @@ describe('stagePackagedRuntime', () => {
     const resources = await makeBundledRuntime(root)
     const runtimeRoot = join(root, 'runtimes')
     const staged = await stagePackagedRuntime(resources, runtimeRoot, '1.0.0')
-    expect(staged).toBe(join(runtimeRoot, '1.0.0'))
+    expect(staged).toBe(join(runtimeRoot, stagedName('1.0.0')))
     expect(await readFile(join(staged, 'lib/bin.js'), 'utf8')).toBe('// bin\n')
     expect(await readFile(join(staged, '.dsh-runtime-complete'), 'utf8')).toBe('1.0.0')
+  })
+
+  it('re-copies once when the Node probe fails, then marks completion', async () => {
+    const root = await sandbox()
+    const resources = await makeBundledRuntime(root)
+    const runtimeRoot = join(root, 'runtimes')
+    const probe = vi.mocked(spawnSync)
+    probe.mockReturnValueOnce({ status: 2, stdout: '' } as never)
+    const staged = await stagePackagedRuntime(resources, runtimeRoot, '1.0.0')
+    expect(probe).toHaveBeenCalledTimes(2)
+    expect(await readFile(join(staged, '.dsh-runtime-complete'), 'utf8')).toBe('1.0.0')
+  })
+
+  it('refuses a runtime whose Node probe keeps failing and leaves nothing behind', async () => {
+    const root = await sandbox()
+    const resources = await makeBundledRuntime(root)
+    const runtimeRoot = join(root, 'runtimes')
+    vi.mocked(spawnSync).mockReturnValue({ status: 2, stdout: '' } as never)
+    await expect(stagePackagedRuntime(resources, runtimeRoot, '1.0.0'))
+      .rejects.toThrow(/node --version.*probe/)
+    expect(await readdir(runtimeRoot)).toEqual([])
   })
 
   it.skipIf(process.platform === 'win32')('preserves bundled Node relative symlinks', async () => {
@@ -156,11 +191,11 @@ describe('stagePackagedRuntime', () => {
     const resources = await makeBundledRuntime(root)
     const runtimeRoot = join(root, 'runtimes')
     // Leftover from a killed run: a partial target and a stale staging dir.
-    await mkdir(join(runtimeRoot, '1.0.0/lib'), { recursive: true })
+    await mkdir(join(runtimeRoot, `${stagedName('1.0.0')}/lib`), { recursive: true })
     await mkdir(join(runtimeRoot, '.staging-999'), { recursive: true })
     const staged = await stagePackagedRuntime(resources, runtimeRoot, '1.0.0')
     expect(await readFile(join(staged, 'lib/bin.js'), 'utf8')).toBe('// bin\n')
-    expect(await readdir(runtimeRoot)).toEqual(['1.0.0'])
+    expect(await readdir(runtimeRoot)).toEqual([stagedName('1.0.0')])
   })
 
   it('re-stages on a version change and removes the old version', async () => {
@@ -169,7 +204,7 @@ describe('stagePackagedRuntime', () => {
     const runtimeRoot = join(root, 'runtimes')
     await stagePackagedRuntime(resources, runtimeRoot, '1.0.0')
     await stagePackagedRuntime(resources, runtimeRoot, '1.1.0')
-    expect((await readdir(runtimeRoot)).sort()).toEqual(['1.1.0'])
+    expect((await readdir(runtimeRoot)).sort()).toEqual([stagedName('1.1.0')])
   })
 
   it('resolveHarnessRuntime passes development through and stages packaged builds', async () => {
@@ -180,6 +215,6 @@ describe('stagePackagedRuntime', () => {
     const resources = await makeBundledRuntime(root)
     const desktopPaths = resolveDesktopPaths(join(root, 'userdata'))
     const resolved = await resolveHarnessRuntime({ kind: 'packaged', resourcesPath: resources }, desktopPaths, '2.0.0')
-    expect(resolved).toEqual({ kind: 'packaged', runtimeDir: join(desktopPaths.runtimeRoot, '2.0.0') })
+    expect(resolved).toEqual({ kind: 'packaged', runtimeDir: join(desktopPaths.runtimeRoot, stagedName('2.0.0')) })
   })
 })

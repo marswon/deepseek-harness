@@ -10,7 +10,7 @@ DeepSeek Harness 桌面壳：Electron 主进程监督一个本地 `dsh web` 子�
 Electron main (apps/desktop)
 ├── userData/                     desktop-owned data root (survives upgrades)
 │   ├── harness/                  $DSH_HOME: profiles, sessions, settings, credentials
-│   ├── runtimes/<version>/       staged dsh-runtime copy (kept out of the install dir)
+│   ├── runtimes/<version>-<platform>-<arch>/  staged dsh-runtime copy (kept out of the install dir)
 │   ├── launch-root/              default project directory (no startup prompt)
 │   └── logs/harness.log          child stdout/stderr
 ├── Harness child process         bundled stock Node running `dsh web --host 127.0.0.1 --port 0`
@@ -19,7 +19,7 @@ Electron main (apps/desktop)
      └── http://127.0.0.1:<port>  Harness web UI
 ```
 
-- 开发模式用系统 Node 跑仓库构建产物（`apps/cli/lib/bin.js`）；打包产物首次启动时把运行时闭包和完整的目标平台 Node.js 发行版（Node、npm、npx、Corepack）复制到桌面数据根目录（`runtimes/<版本>`）并从副本启动。安装目录永远不会承载运行中的进程，Windows 更新不会被其锁住；Corepack 会提供 profile 的 pnpm 命令，插件市场不再依赖系统已安装 Node。两者都传 `--expose-internals`，Cordis loader 因此不需要原生 `node-addon-require-builtin` 回退。不复用 Electron 二进制当 Node：Electron 的 V8 sandbox 会让 N-API 裸内存视图致命崩溃（win32 对话框 worker 里的 `koffi.view`）。
+- 开发模式用系统 Node 跑仓库构建产物（`apps/cli/lib/bin.js`）；打包产物首次启动时把运行时闭包和完整的目标平台 Node.js 发行版（Node、npm、npx、Corepack）复制到桌面数据根目录（`runtimes/<版本>-<平台>-<架构>`）并从副本启动。副本里的 Node 必须通过 `node --version` 探测才会写入完成标记——架构不符或损坏的暂存副本会重拷一次，仍失败则响亮报错，而不是让每次启动都坏掉。安装目录永远不会承载运行中的进程，Windows 更新不会被其锁住；Corepack 会提供 profile 的 pnpm 命令，插件市场不再依赖系统已安装 Node。两者都传 `--expose-internals`，Cordis loader 因此不需要原生 `node-addon-require-builtin` 回退。不复用 Electron 二进制当 Node：Electron 的 V8 sandbox 会让 N-API 裸内存视图致命崩溃（win32 对话框 worker 里的 `koffi.view`）。
 - node-pty 自带 N-API prebuild，ABI 在 Node 22/24 间稳定，打包时无需原生重编（`npmRebuild: false`）。
 - 窗口只放行 loopback HTTP 与本地 shell 页；其余 http(s) 目标交给系统浏览器。renderer 永远拿不到 Node 权限。
 - web profile 自带 [dshmarket](https://github.com/dsh-market/dsh-market)（设置 → 插件市场）：来自 awesome-dsh-plugin 注册表的社区插件市场——一键安装/更新/卸载，无需命令行。插件是第三方代码；市场只安装 awesome 列表收录的来源，且默认不执行其构建脚本。

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { cp, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { delimiter, dirname, join } from 'node:path'
@@ -66,7 +67,33 @@ export function bundledNodePath(runtimeDir: string): string {
 const STAGING_COMPLETE = '.dsh-runtime-complete'
 
 /**
- * Stage the bundled dsh-runtime into `runtimeRoot/<version>` and return it.
+ * The staged copy's directory name: the app version plus the runtime's own
+ * platform and architecture. A home directory shared or migrated across
+ * machines of different architectures must never reuse another
+ * architecture's staged Node — the kernel rejects it with ENOEXEC and the
+ * execvp fallback then interprets the ELF as a shell script.
+ * @param version - the app version.
+ * @returns the directory name under the staging root.
+ */
+function stagedRuntimeName(version: string): string {
+  return `${version}-${process.platform}-${process.arch}`
+}
+
+/**
+ * Probe the staged Node interpreter. A copy that cannot execute — a
+ * foreign-architecture reuse or a truncated copy — is rejected before the
+ * completion marker lets it win every later launch.
+ * @param runtimeDir - the staged dsh-runtime directory.
+ * @returns whether `node --version` ran and printed a version.
+ */
+function stagedNodeRuns(runtimeDir: string): boolean {
+  const result = spawnSync(bundledNodePath(runtimeDir), ['--version'], { encoding: 'utf8', timeout: 10_000 })
+  return result.error === undefined && result.status === 0 && result.stdout.startsWith('v')
+}
+
+/**
+ * Stage the bundled dsh-runtime into `runtimeRoot/<version>-<platform>-<arch>`
+ * and return it.
  *
  * Windows locks the directory of every running executable and loaded DLL, so
  * launching node.exe (and its N-API modules) from inside the install
@@ -75,13 +102,17 @@ const STAGING_COMPLETE = '.dsh-runtime-complete'
  * leaves the install directory free of running processes.
  *
  * Staging is crash-safe: the copy lands in a sibling `.staging-*` directory
- * and is renamed into place only once the completion marker is written, so a
- * killed app never leaves a half-copied runtime behind. A directory with a
- * marker wins outright; anything else is rebuilt. Older versions are removed
- * after a successful stage.
+ * and is renamed into place only once the staged Node passes a
+ * `node --version` probe and the completion marker is written, so a killed
+ * app never leaves a half-copied runtime behind and a foreign-architecture
+ * or corrupt copy never earns the marker. One re-copy retry covers a
+ * transient copy fault; a persistent probe failure throws, because the
+ * bundled runtime cannot execute on this machine at all. A directory with a
+ * marker wins outright; anything else is rebuilt. Older versions and other
+ * platform-arch copies are removed after a successful stage.
  * @param resourcesPath - the app's resources directory (source of truth).
  * @param runtimeRoot - the desktop runtime staging root (paths.runtimeRoot).
- * @param version - the app version; one staged copy per version.
+ * @param version - the app version; one staged copy per version and platform-arch.
  * @returns the staged dsh-runtime directory to launch from.
  */
 export async function stagePackagedRuntime(
@@ -90,25 +121,37 @@ export async function stagePackagedRuntime(
   version: string,
 ): Promise<string> {
   const source = join(resourcesPath, 'dsh-runtime')
-  const target = join(runtimeRoot, version)
+  const name = stagedRuntimeName(version)
+  const target = join(runtimeRoot, name)
   await mkdir(runtimeRoot, { recursive: true })
 
   const entries = await readdir(runtimeRoot)
   if (existsSync(join(target, STAGING_COMPLETE))) {
-    await pruneStaleRuntimes(entries, runtimeRoot, version)
+    await pruneStaleRuntimes(entries, runtimeRoot, name)
     return target
   }
 
   // Partial or stale output: rebuild from scratch.
   await rm(target, { recursive: true, force: true })
-  const staging = join(runtimeRoot, `.staging-${process.pid}`)
-  await rm(staging, { recursive: true, force: true })
-  await cp(source, staging, { recursive: true, dereference: false, verbatimSymlinks: true })
-  await writeFile(join(staging, STAGING_COMPLETE), version, 'utf8')
-  await rm(target, { recursive: true, force: true })
-  await rename(staging, target)
-  await pruneStaleRuntimes(entries, runtimeRoot, version)
-  return target
+  for (let attempt = 0; ; attempt += 1) {
+    const staging = join(runtimeRoot, `.staging-${process.pid}`)
+    await rm(staging, { recursive: true, force: true })
+    await cp(source, staging, { recursive: true, dereference: false, verbatimSymlinks: true })
+    if (stagedNodeRuns(staging)) {
+      await writeFile(join(staging, STAGING_COMPLETE), version, 'utf8')
+      await rm(target, { recursive: true, force: true })
+      await rename(staging, target)
+      await pruneStaleRuntimes(entries, runtimeRoot, name)
+      return target
+    }
+    await rm(staging, { recursive: true, force: true })
+    if (attempt === 1) {
+      throw new Error(
+        `stagePackagedRuntime: the bundled Node.js runtime for ${process.platform}/${process.arch}`
+        + ' failed its `node --version` probe twice; the packaged runtime cannot execute on this machine.',
+      )
+    }
+  }
 }
 
 /** Remove staged copies of other versions and leftover staging dirs; failures are cosmetic. */
