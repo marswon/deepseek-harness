@@ -209,9 +209,12 @@ async function pendingInstallerPath(info: UpdateInfo): Promise<string | null> {
   try {
     const yml = await readFile(join(process.resourcesPath, 'app-update.yml'), 'utf8')
     const match = /^updaterCacheDirName:\s*'?([^\n']+)'?\s*$/m.exec(yml)
-    const fileName = info.files[0]?.url
+    // files is the authoritative installer list; path is its deprecated
+    // pre-v6 mirror, still the only field older feed metadata populates.
+    // oxlint-disable-next-line typescript/no-deprecated -- legacy-feed fallback, see above.
+    const fileName = info.files[0]?.url ?? info.path
     const cacheDirName = match?.[1]
-    if (cacheDirName === undefined || fileName === undefined) return null
+    if (cacheDirName === undefined) return null
     const localAppData = process.env['LOCALAPPDATA'] ?? join(homedir(), 'AppData', 'Local')
     return join(localAppData, cacheDirName, 'pending', fileName)
   } catch {
