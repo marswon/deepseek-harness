@@ -209,7 +209,7 @@ async function pendingInstallerPath(info: UpdateInfo): Promise<string | null> {
   try {
     const yml = await readFile(join(process.resourcesPath, 'app-update.yml'), 'utf8')
     const match = /^updaterCacheDirName:\s*'?([^\n']+)'?\s*$/m.exec(yml)
-    const fileName = info.path ?? info.files[0]?.url
+    const fileName = info.files[0]?.url
     const cacheDirName = match?.[1]
     if (cacheDirName === undefined || fileName === undefined) return null
     const localAppData = process.env['LOCALAPPDATA'] ?? join(homedir(), 'AppData', 'Local')

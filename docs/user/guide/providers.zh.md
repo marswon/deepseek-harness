@@ -2,7 +2,7 @@
 
 [English](providers.md) | 中文
 
-本指南假定你已用 `npx @deepseek-ai/dsh web` 启动 Web UI（见 [`dsh web` 别名](../../../apps/cli/reference/README.zh.md#web-alias)）。模型变更会在下一次请求时生效，不需要重启服务器。
+本指南假定你已用 `npx @deepseek-ai/dsh web` 启动 Web UI（见 [`dsh web` 别名](../../../apps/cli/reference/README.zh.md)）。模型变更会在下一次请求时生效，不需要重启服务器。
 
 ## 配置 DeepSeek
 

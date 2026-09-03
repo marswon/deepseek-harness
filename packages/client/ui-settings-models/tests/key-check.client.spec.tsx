@@ -384,7 +384,7 @@ describe('guidance through the Models page', () => {
       operations: createModelsOperations(ctx),
       schema: settingsSchema,
       t,
-      renderSlot: vi.fn(() => null) as unknown as ModelsSectionProps['renderSlot'],
+      renderSlot: vi.fn(() => null),
     }
     render(<ModelsSection {...injected} />)
     return { face, controller }

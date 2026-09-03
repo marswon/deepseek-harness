@@ -6,6 +6,16 @@ import { disableMarketPlugins, INBOX_PROFILE_BUNDLES, WINDOWS_QUARANTINED_BUNDLE
 
 const dirs: string[] = []
 
+/** The manifest slice the assertions read back, as written by writeProfile. */
+interface WrittenProfile {
+  dependencies: Record<string, string>
+  dsh: { profile: { bundles: string[] } }
+}
+
+function readProfileSync(raw: string): WrittenProfile {
+  return JSON.parse(raw) as WrittenProfile
+}
+
 async function tempDshHome(): Promise<{ dshHome: string; logDir: string }> {
   const root = await mkdtemp(join(tmpdir(), 'dsh-desktop-market-'))
   dirs.push(root)
@@ -47,7 +57,7 @@ describe('disableMarketPlugins', () => {
     const removed = await disableMarketPlugins(dshHome, logDir, WINDOWS_QUARANTINED_BUNDLES)
 
     expect(removed).toEqual(['@linxin666/dsh-web-ui-all'])
-    const manifest = JSON.parse(await readFile(manifestFile, 'utf8'))
+    const manifest = readProfileSync(await readFile(manifestFile, 'utf8'))
     expect(manifest.dependencies).toEqual({ '@deepseek-ai/dsh-base': '1.0.0' })
     expect(manifest.dsh.profile.bundles).toEqual(['@deepseek-ai/dsh-base', 'dshmarket'])
   })
@@ -65,7 +75,7 @@ describe('disableMarketPlugins', () => {
     const removed = await disableMarketPlugins(dshHome, logDir)
 
     expect(removed).toEqual(['some-other-plugin'])
-    const manifest = JSON.parse(await readFile(manifestFile, 'utf8'))
+    const manifest = readProfileSync(await readFile(manifestFile, 'utf8'))
     expect(Object.keys(manifest.dependencies)).toEqual(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'])
   })
 
@@ -87,7 +97,7 @@ describe('disableMarketPlugins', () => {
     const { readdir } = await import('node:fs/promises')
     const backups = (await readdir(logDir)).filter(name => name.startsWith('web-profile-before-recovery-'))
     expect(backups).toHaveLength(1)
-    const backup = JSON.parse(await readFile(join(logDir, backups[0]!), 'utf8'))
+    const backup = readProfileSync(await readFile(join(logDir, backups[0]!), 'utf8'))
     expect(backup.dependencies).toEqual({ 'some-plugin': '1.0.0' })
   })
 

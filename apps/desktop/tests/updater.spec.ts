@@ -47,7 +47,7 @@ vi.mock('electron', () => ({
   net: { fetch: (...args: unknown[]): unknown => mocks.netFetch(...args) as unknown },
   shell: {
     openExternal: (url: string): unknown => mocks.openExternal(url) as unknown,
-    openPath: (path: string): unknown => mocks.openPath(path) as unknown,
+    openPath: (path: string): unknown => mocks.openPath(path),
   },
 }))
 vi.mock('node:child_process', () => ({
@@ -240,7 +240,7 @@ describe('setupAutoUpdater', () => {
     showMessageBox.mockResolvedValue({ response: 1 })
     handlers.get('update-downloaded')?.({ version: '0.2.0', files: [] })
     await settle()
-    expect(String(showMessageBox.mock.calls[0]?.[0]?.detail)).toContain('ask for your password')
+    expect(String((showMessageBox.mock.calls[0]?.[0] as { detail?: string } | undefined)?.detail)).toContain('ask for your password')
   })
 
   it('on linux Later leaves the app running', async () => {
@@ -264,7 +264,7 @@ describe('setupAutoUpdater', () => {
     check()
     await vi.waitFor(() => { expect(showMessageBox).toHaveBeenCalledOnce() })
     expect(showMessageBox.mock.calls[0]?.[0]).toMatchObject({ message: 'Updates are not available for this build' })
-    expect(String(showMessageBox.mock.calls[0]?.[0]?.detail)).toContain('AppImage')
+    expect(String((showMessageBox.mock.calls[0]?.[0] as { detail?: string } | undefined)?.detail)).toContain('AppImage')
   })
 
   it('on darwin Download fetches the dmg into userData and opens it', async () => {

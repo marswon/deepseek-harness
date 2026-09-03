@@ -23,7 +23,7 @@ DeepSeek Harness 此前只有 CLI 和浏览器 UI，没有桌面应用。桌面�
 ## Alternatives considered
 
 - **Tauri + Node sidecar。** 安装包更小，但 Harness 运行时是重型 Node 插件系统（Cordis loader、pty、子进程、内嵌 Python 运行时）；把它塞进 Rust 壳的 sidecar，省下的是体积，赌上的是产品里风险最高的部分。仓库的原生模块与部署工具链也都是 Node 形态的。
-- **进程内 host + IPC fetch 桥**，即 [GUI layering and RPC protocol](2026-07-19-gui-layering-and-rpc-protocol.md) 的设想：无 HTTP server、攻击面最小。但它需要无 webserver 的新 host 组合、`packages/client/connection` 下的 IPC transport、相对路径的 web 构建——约三倍工作量且触及核心 client 包。子进程路线零改动 `packages/` 就能上线同一套 UI；IPC 桥仍是可行的后续演进。
+- **进程内 host + IPC fetch 桥**，即 [GUI layering and RPC protocol](2026-07-19-gui-web-client-architecture.zh.md) 的设想：无 HTTP server、攻击面最小。但它需要无 webserver 的新 host 组合、`packages/client/connection` 下的 IPC transport、相对路径的 web 构建——约三倍工作量且触及核心 client 包。子进程路线零改动 `packages/` 就能上线同一套 UI；IPC 桥仍是可行的后续演进。
 - **fork 或 vendor dsh-desktop。** 它是围绕钉死 npm 版本的薄 patch-package 封装；monorepo 集成用 workspace 源码替代了它整套补丁机制，借它的代码收益有限。
 - **安装包内附带独立 Node 二进制。** 当时以每个平台约 50 MB 的重复运行时为由否决——N-API prebuild 让 ABI 匹配看似充分；后来 Electron 的 V8 sandbox 被证明对 koffi 裸内存视图是致命的，于是[改为采用](../bug-fix/2026-08-14-desktop-bundled-node-runtime.zh.md)。
 
