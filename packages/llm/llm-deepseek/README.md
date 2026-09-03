@@ -48,6 +48,8 @@ Choose this adapter when the deployment targets DeepSeek's official API, optiona
 
 A request selects the route with `provider: deepseek-official`; the model id passes through to the wire, so new DeepSeek models need no re-registration. Omitted `models` advertises `deepseek-v4-flash` as the fast, economical choice for focused work, `deepseek-v4-pro` as the stronger, higher-cost choice for complex or quality-critical work, and the image-capable `deepseek-v4-flash-vision-exp`; each has a 1,000,000-token context window. An explicit list replaces those defaults, and unlisted model ids still pass through as text-only routes. Clients, including model discovery tools, can read the advisory entries through `ctx.llm.listModels('deepseek-official')`. Image-capable entries may set `imagePixelBudget` to a positive integer or `low`, and may set `imageMaxBytes`.
 
+The plugin declares its route in the configurable-provider directory with `consoleUrl` naming DeepSeek's official get-a-key page (`https://platform.deepseek.com/api_keys`), and offers endpoint interrogation through `ctx.llm.registerModelDiscovery('llm-deepseek', …)`. A request naming `deepseek-official` is answered from the configured catalog with no network call; `validate: true` is the check-key action, so the endpoint is interrogated — `GET {baseURL}/models`, OpenAI-compatible, bearer key — with `baseURL` falling back to the configured endpoint when the draft names none or an empty one. A typed `apiKey` wins over the stored credential, which resolves only on the path that reaches the network and fails with `MISSING_CREDENTIAL` when no key is configured anywhere. A 401 or 403 answers "check the API key", an unreachable endpoint answers "could not reach", and nothing is stored: the reply is candidate metadata the configuration surface offers for adoption.
+
 | Field | Default | Meaning |
 |---|---|---|
 | `apiKeyEnv` | `DEEPSEEK_API_KEY` | Credential reference resolved per request through the credentials seam, then the environment |
@@ -116,6 +118,7 @@ The plugin is built on one explicit resolve step and one registration fact. `res
 | [`src/adapter.ts`](src/adapter.ts) | The `DeepSeekAdapter`: model resolution, image projection, Files fallback, streaming with idle timeout |
 | [`src/file-store.ts`](src/file-store.ts) + [`src/files-api.ts`](src/files-api.ts) | Scoped upload caching, expiry, stale-id recovery, quota cleanup, and remote file operations |
 | [`src/serialize.ts`](src/serialize.ts) | Wire serialization: thinking defaults, Files or inline image blocks, history rules |
+| [`src/discovery.ts`](src/discovery.ts) | Endpoint interrogation (`GET {baseURL}/models`) for the configuration surface's fetch and check-key actions |
 | [`src/sse.ts`](src/sse.ts) | `eventsource-parser` SSE framing for the direct `fetch` stream |
 | [`src/translate.ts`](src/translate.ts) | SSE payload translation into harness `StreamChunk` values |
 | [`src/types.ts`](src/types.ts) | Wire-level types shared by the modules above |

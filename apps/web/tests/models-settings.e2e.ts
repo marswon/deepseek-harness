@@ -74,7 +74,11 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
     await pick.waitFor({ timeout: 10_000 })
     await expect.poll(async () => pick.locator('option').count(), { timeout: 10_000 }).toBeGreaterThan(30)
     const options = await pick.locator('option').allTextContents()
-    expect(options).toContain('anthropic')
+    // Tabled providers carry their pretty display name now; an untabled
+    // provider like minimax-cn keeps its raw route id as the label. The
+    // option VALUE is the route id either way, so the selection below is
+    // unaffected by the label change.
+    expect(options).toContain('Anthropic')
     expect(options).toContain('minimax-cn')
     await pick.selectOption('minimax-cn')
     await dialog.getByRole('textbox', { name: 'API 密钥', exact: true }).waitFor({ timeout: 10_000 })

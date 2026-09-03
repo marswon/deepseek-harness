@@ -48,6 +48,8 @@ kind: "package-reference"
 
 请求用 `provider: deepseek-official` 选择路由；模型 id 原样传到协议，因此新增 DeepSeek 模型无需重新注册。省略 `models` 时会公布适合专注任务、快速且经济的 `deepseek-v4-flash`，适合复杂或质量关键任务、能力更强且成本更高的 `deepseek-v4-pro`，以及支持图像的 `deepseek-v4-flash-vision-exp`；每个模型都有 1,000,000 token 上下文窗口。显式列表会替换这些默认值，未列出的模型 id 仍作为纯文本路由原样通过。包括模型发现工具在内的客户端可通过 `ctx.llm.listModels('deepseek-official')` 读取这些建议性条目。支持图片的条目可把 `imagePixelBudget` 设置为正整数或 `low`，也可以设置 `imageMaxBytes`。
 
+插件在可配置提供方目录中声明自己的路由，并携带 `consoleUrl` 指明 DeepSeek 官方获取密钥页面（`https://platform.deepseek.com/api_keys`），同时通过 `ctx.llm.registerModelDiscovery('llm-deepseek', …)` 提供端点询问。点名 `deepseek-official` 的请求由已配置的 catalog 作答，不联网；`validate: true` 是检查密钥动作，因此端点会被询问——`GET {baseURL}/models`，OpenAI 兼容、bearer 密钥——草稿未给端点或给了空串时，`baseURL` 回退到已配置端点。表单中输入的 `apiKey` 优先于已存凭据，后者只在真正联网的路径上解析，且当任何地方都没有配置密钥时以 `MISSING_CREDENTIAL` 失败。401 或 403 回复“check the API key”，无法到达的端点回复“could not reach”，且这里什么都不存储：回复是配置界面提供给用户采纳的候选元数据。
+
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `apiKeyEnv` | `DEEPSEEK_API_KEY` | 按请求解析的凭据引用：先经凭据 seam，再到环境变量 |
@@ -116,6 +118,7 @@ Files 模式通过 `maxRequestFilesBytes` 与 `maxImagesPerRequest` 限制保留
 | [`src/adapter.ts`](src/adapter.ts) | `DeepSeekAdapter`：模型解析、图片投影、Files 回退、带空闲超时的流式调用 |
 | [`src/file-store.ts`](src/file-store.ts) + [`src/files-api.ts`](src/files-api.ts) | 限定作用域的上传缓存、到期、陈旧 id 恢复、配额清理与远程文件操作 |
 | [`src/serialize.ts`](src/serialize.ts) | 协议序列化：thinking 默认值、Files 或内联图片块、历史规则 |
+| [`src/discovery.ts`](src/discovery.ts) | 面向配置界面“获取可用模型”与“检查密钥”动作的端点询问（`GET {baseURL}/models`） |
 | [`src/sse.ts`](src/sse.ts) | 直接 `fetch` 流的 `eventsource-parser` SSE 分帧 |
 | [`src/translate.ts`](src/translate.ts) | 把 SSE 载荷翻译为 harness `StreamChunk` 值 |
 | [`src/types.ts`](src/types.ts) | 上述模块共享的协议级类型 |

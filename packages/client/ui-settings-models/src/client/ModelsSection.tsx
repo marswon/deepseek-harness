@@ -76,6 +76,8 @@ interface EditorTarget extends ProviderIdentity {
   credentialRef?: string
   /** The adapter reports this route as one it does not ship (see {@link ProviderEditorProps.declared}). */
   declared?: boolean
+  /** The provider's official get-a-key page, when the adapter knows one. */
+  consoleUrl?: string
 }
 
 /** Values that vary around the shared provider-editor rendering. */
@@ -94,6 +96,7 @@ function renderProviderEditor({ target, ...props }: ProviderEditorRenderProps): 
       displayName={target.displayName}
       settingsPath={target.settingsPath}
       {...target.declared === true ? { declared: true } : {}}
+      {...target.consoleUrl === undefined ? {} : { consoleUrl: target.consoleUrl }}
       {...props}
     />
   )
@@ -172,6 +175,7 @@ function targetOf(row: ProviderRow): EditorTarget {
     ...credentialRef === undefined ? {} : { credentialRef },
     // Only declared routes may expose route-owned fields.
     ...row.entry.declared === true ? { declared: true } : {},
+    ...row.entry.consoleUrl === undefined ? {} : { consoleUrl: row.entry.consoleUrl },
   }
 }
 
@@ -469,6 +473,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                 operations={operations}
                 t={t}
                 readOnly={!state.writable}
+                {...addTarget.consoleUrl === undefined ? {} : { consoleUrl: addTarget.consoleUrl }}
                 onClose={(changed) => { closeEditor(changed, addTarget) }}
               />
               {addRow === undefined

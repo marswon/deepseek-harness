@@ -93,6 +93,47 @@ export const inject = ['llm']
 const NS = 'llm-pi-ai'
 
 /**
+ * The official console page where a user obtains or buys an API key, for each
+ * installed catalog provider that has one. Keyed by catalog provider id and
+ * verified against the catalog's own base URLs; a provider absent here (or
+ * absent from the installed catalog) carries no `consoleUrl`, so a
+ * configuration surface offers a get-a-key link only where a destination is
+ * known.
+ */
+const PROVIDER_CONSOLE_URLS: Readonly<Record<string, string>> = {
+  openai: 'https://platform.openai.com/api-keys',
+  anthropic: 'https://console.anthropic.com/settings/keys',
+  openrouter: 'https://openrouter.ai/keys',
+  groq: 'https://console.groq.com/keys',
+  together: 'https://api.together.xyz/settings/api-keys',
+  mistral: 'https://console.mistral.ai/api-keys',
+  deepseek: 'https://platform.deepseek.com/api-keys',
+  xai: 'https://console.x.ai/',
+  google: 'https://aistudio.google.com/apikey',
+  cerebras: 'https://cloud.cerebras.ai/',
+  fireworks: 'https://fireworks.ai/account/api-keys',
+}
+
+/**
+ * The display spelling for each installed catalog provider that has one.
+ * The directory's default name is the route key, which reads as an identifier
+ * (`openai`, `xai`); a provider absent here keeps it.
+ */
+const PROVIDER_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  openrouter: 'OpenRouter',
+  groq: 'Groq',
+  together: 'Together AI',
+  mistral: 'Mistral AI',
+  deepseek: 'DeepSeek',
+  xai: 'xAI',
+  google: 'Google',
+  cerebras: 'Cerebras',
+  fireworks: 'Fireworks AI',
+}
+
+/**
  * The registry captures these per route; a change here must re-register.
  * Sorted by provider so a settings document that merely reorders its keys is
  * not mistaken for a route change.
@@ -123,20 +164,29 @@ function directoryEntries(
 ): LlmConfigurableProvider[] {
   const catalog = new Set(catalogProviderIds())
   const entries = new Map<string, LlmConfigurableProvider>()
-  const declare = (provider: string, displayName: string): void => {
+  const declare = (provider: string, displayName?: string): void => {
+    const consoleUrl = PROVIDER_CONSOLE_URLS[provider]
     entries.set(provider, {
       provider,
-      displayName,
+      // A profile's own displayName wins when configured; the pretty table
+      // spelling is the default for a provider it names, and everything else
+      // keeps the raw route key.
+      displayName: displayName ?? PROVIDER_DISPLAY_NAMES[provider] ?? provider,
       settingsNs: NS,
       settingsPath: ['providers', provider],
       // Membership of the installed catalog, not of the settings document:
       // narrowing a shipped provider's models stores a profile too, and that
       // route is still one pi-ai knows.
       declared: !catalog.has(provider),
+      ...consoleUrl === undefined ? {} : { consoleUrl },
     })
   }
-  for (const provider of catalog) declare(provider, provider)
-  for (const [provider, profile] of profiles) declare(provider, profile.displayName)
+  for (const provider of catalog) declare(provider)
+  // A profile displayName that merely restates the route key is the resolved
+  // default, not a choice — the pretty table spelling still applies.
+  for (const [provider, profile] of profiles) {
+    declare(provider, profile.displayName === provider ? undefined : profile.displayName)
+  }
   return [...entries.values()]
 }
 

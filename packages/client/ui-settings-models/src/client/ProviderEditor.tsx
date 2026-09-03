@@ -32,6 +32,7 @@ import {
 } from './DeepSeekModelsEditor.tsx'
 import { apiKeyFailure } from './apiKey.ts'
 import { EditorFooter } from './EditorFooter.tsx'
+import { KeyCheckButton, KeyCheckStatus, KeyGuidance, useKeyCheck } from './KeyCheck.tsx'
 import { ModelListEditor } from './ModelListEditor.tsx'
 import { deriveKeyRef, protocolChoices } from './store.ts'
 import type { ModelsOperations } from './operations.ts'
@@ -61,6 +62,8 @@ export interface ProviderEditorProps {
    * override every one of them and the card does not offer it.
    */
   declared?: boolean
+  /** The provider's official get-a-key page, when the adapter knows one. */
+  consoleUrl?: string
   /** The owning namespace view (schema, layers, secrets). */
   namespace: SettingsNamespaceView
   /** Settings-owned synchronous schema and immutable path operations. */
@@ -137,7 +140,7 @@ function layoutOf(ns: string): EditorLayout {
 }
 
 /** The credential reference this profile resolves keys through. */
-function refFor(
+export function refFor(
   schema: SettingsSchemaOperations,
   namespace: SettingsNamespaceView,
   path: readonly string[],
@@ -169,6 +172,9 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
     () => schema.getPath(namespace.user, settingsPath),
   )
   const [expectedRevision, setExpectedRevision] = useState(() => namespace.revision)
+  // The live key probe beside the key field; a fresh keystroke makes its
+  // verdict stale, so the field's onChange resets it.
+  const keyCheck = useKeyCheck(operations)
   const root = useMemo(() => schema.rehydrate(namespace.schema), [namespace.schema, schema])
   const node = useMemo(() => schema.nodeAtPath(root, settingsPath), [root, schema, settingsPath])
   const fallback = schema.getPath(namespace.value, settingsPath)
@@ -362,20 +368,40 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       <>
         <div className={styles['field']}>
           <span className={styles['fieldLabel']}>{t('keyInput')}</span>
-          <input
-            className={styles['input']}
-            type="password"
-            autoComplete="off"
-            value={keyDraft}
-            placeholder={keyPlaceholder}
-            aria-label={t('keyInput')}
-            aria-invalid={shownKeyFailure !== undefined}
-            required={props.credentialRequired === true}
-            autoFocus={props.autoFocusCredential === true}
-            disabled={disabled || keyLocked}
-            onChange={(event) => { setKeyDraft(event.target.value) }}
-          />
+          <div className={styles['keyRow']}>
+            <input
+              className={styles['input']}
+              type="password"
+              autoComplete="off"
+              value={keyDraft}
+              placeholder={keyPlaceholder}
+              aria-label={t('keyInput')}
+              aria-invalid={shownKeyFailure !== undefined}
+              required={props.credentialRequired === true}
+              autoFocus={props.autoFocusCredential === true}
+              disabled={disabled || keyLocked}
+              onChange={(event) => {
+                setKeyDraft(event.target.value)
+                // A verdict belongs to the key it probed; a new keystroke
+                // makes it stale, so it clears instead of reading as current.
+                keyCheck.reset()
+              }}
+            />
+            <KeyCheckButton
+              t={t}
+              state={keyCheck.state}
+              disabled={disabled || keyLocked || shownKeyFailure !== undefined}
+              onCheck={() => { void keyCheck.check(probe) }}
+            />
+          </div>
           {shownKeyFailure === undefined ? null : <p className={styles['error']}>{t(shownKeyFailure)}</p>}
+          <KeyCheckStatus t={t} state={keyCheck.state} />
+          <KeyGuidance
+            provider={props.provider}
+            displayName={props.displayName}
+            consoleUrl={props.consoleUrl}
+            t={t}
+          />
         </div>
         {props.credentialOnly === true ? null : <details className={styles['customized']}>
           <summary className={styles['customizedSummary']}>{t('customized')}</summary>

@@ -46,7 +46,10 @@ describe.skipIf(MODE === 'record')('web e2e: another usable provider ends first-
     onTestFailed(() => saveFailureShot(page, 'web-e2e-onboarding-setup-card-cancel'))
     const credentialStep = page.getByRole('dialog', { name: CREDENTIAL_STEP })
     await credentialStep.waitFor({ timeout: 15_000 })
-    await credentialStep.getByRole('button', { name: '稍后配置' }).click()
+    // The wizard's skip keeps the old configure-later semantics: it lives on
+    // the 配置 step, one 下一步 past the 了解 opener.
+    await credentialStep.getByRole('button', { name: '下一步' }).click()
+    await credentialStep.getByRole('button', { name: '跳过' }).click()
     await credentialStep.waitFor({ state: 'detached', timeout: 15_000 })
 
     await page.getByRole('button', { name: '设置', exact: true }).click()

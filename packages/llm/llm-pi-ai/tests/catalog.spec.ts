@@ -151,6 +151,14 @@ describe('hand-declared providers', () => {
     expect(directory.filter(entry => entry.declared).map(entry => entry.provider))
       .toEqual(['acme-gateway'])
     expect(directory.find(entry => entry.provider === 'deepseek')?.declared).toBe(false)
+    // A provider the tables name gets its pretty spelling and console page; a
+    // hand-declared route keeps its profile name and gains no consoleUrl,
+    // since no official key page is known for it.
+    expect(directory.find(entry => entry.provider === 'deepseek'))
+      .toMatchObject({ displayName: 'DeepSeek', consoleUrl: 'https://platform.deepseek.com/api-keys' })
+    expect(directory.find(entry => entry.provider === 'acme-gateway'))
+      .toMatchObject({ displayName: 'Acme Gateway' })
+    expect(directory.find(entry => entry.provider === 'acme-gateway')).not.toHaveProperty('consoleUrl')
   })
 
   it('sizes a model the catalog cannot describe from the route\u2019s own fallbacks', () => {
@@ -1216,5 +1224,53 @@ describe('configurable-provider directory', () => {
       settingsPath: ['providers', 'openai-codex'],
       declared: false,
     })
+  })
+
+  it('spells the tabled providers pretty and links their console pages, and only those', async () => {
+    const ctx = await harness({})
+    const directory = new Map(ctx.llm.listConfigurableProviders().map(entry => [entry.provider, entry]))
+
+    // Every table entry, pinned so a table edit without a matching test edit
+    // fails here.
+    const expected: Record<string, { displayName: string; consoleUrl: string }> = {
+      openai: { displayName: 'OpenAI', consoleUrl: 'https://platform.openai.com/api-keys' },
+      anthropic: { displayName: 'Anthropic', consoleUrl: 'https://console.anthropic.com/settings/keys' },
+      openrouter: { displayName: 'OpenRouter', consoleUrl: 'https://openrouter.ai/keys' },
+      groq: { displayName: 'Groq', consoleUrl: 'https://console.groq.com/keys' },
+      together: { displayName: 'Together AI', consoleUrl: 'https://api.together.xyz/settings/api-keys' },
+      mistral: { displayName: 'Mistral AI', consoleUrl: 'https://console.mistral.ai/api-keys' },
+      deepseek: { displayName: 'DeepSeek', consoleUrl: 'https://platform.deepseek.com/api-keys' },
+      xai: { displayName: 'xAI', consoleUrl: 'https://console.x.ai/' },
+      google: { displayName: 'Google', consoleUrl: 'https://aistudio.google.com/apikey' },
+      cerebras: { displayName: 'Cerebras', consoleUrl: 'https://cloud.cerebras.ai/' },
+      fireworks: { displayName: 'Fireworks AI', consoleUrl: 'https://fireworks.ai/account/api-keys' },
+    }
+    for (const [provider, facts] of Object.entries(expected)) {
+      expect(directory.get(provider), provider).toMatchObject(facts)
+    }
+    // A catalog provider no table names keeps the raw route key and carries
+    // no consoleUrl; the same holds for `openai-codex` above.
+    const untabled = directory.get('zai')
+    expect(untabled?.displayName).toBe('zai')
+    expect(untabled).not.toHaveProperty('consoleUrl')
+  })
+
+  it('lets a profile displayName win, while a defaulted one yields to the table spelling', async () => {
+    const ctx = await harness({
+      providers: {
+        openai: { apiKeyEnv: KEY_ENV },
+        anthropic: { apiKeyEnv: KEY_ENV, displayName: 'Claude (work)' },
+      },
+    })
+    const directory = new Map(ctx.llm.listConfigurableProviders().map(entry => [entry.provider, entry]))
+
+    // A stored profile must not demote the pretty spelling back to the route
+    // key just because the profile never named one.
+    expect(directory.get('openai')).toMatchObject({
+      displayName: 'OpenAI',
+      declared: false,
+      consoleUrl: 'https://platform.openai.com/api-keys',
+    })
+    expect(directory.get('anthropic')?.displayName).toBe('Claude (work)')
   })
 })

@@ -222,6 +222,13 @@ export interface LlmConfigurableProvider {
    * from outside.
    */
   declared?: boolean
+  /**
+   * The provider's official console page where a user obtains or buys an API
+   * key, when the adapter knows one. Absent for routes no official page is
+   * known for — a gateway or self-hosted server — so a configuration surface
+   * offers the "get a key" link only where it can name a destination.
+   */
+  consoleUrl?: string
 }
 
 /**
@@ -247,6 +254,15 @@ export interface LlmModelDiscoveryRequest {
   api?: string
   /** Credential for this interrogation alone; the harness never stores it. */
   apiKey?: string
+  /**
+   * When true, the answer must come from a live network round-trip
+   * authenticated with the given key — an adapter that would otherwise answer
+   * a known route from its own registry interrogates the endpoint instead.
+   * This is how a configuration surface checks whether a key works rather
+   * than what the adapter already believes. Absent or false keeps the
+   * registry short-circuit.
+   */
+  validate?: boolean
 }
 
 /** Provider-side discovery request with operation-local cancellation attached. */

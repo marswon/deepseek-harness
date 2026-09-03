@@ -44,6 +44,7 @@ import {
   DEFAULT_REQUEST_IMAGE_MAX_BYTES,
   DEFAULT_REQUEST_IMAGE_PIXEL_BUDGET,
 } from './request-pricing.ts'
+import { discoverModels } from './discovery.ts'
 
 export {
   DEFAULT_CONTEXT_WINDOW,
@@ -88,6 +89,9 @@ const NS = 'llm-deepseek'
 const DEFAULT_API_KEY_ENV = 'DEEPSEEK_API_KEY'
 /** The single provider route this plugin owns. */
 const PROVIDER = 'deepseek-official'
+
+/** DeepSeek's official console page for obtaining an API key. */
+const CONSOLE_URL = 'https://platform.deepseek.com/api_keys'
 
 const DEFAULT_MODELS: DeepSeekCatalogModel[] = [
   {
@@ -469,8 +473,24 @@ export function apply(ctx: Context, config: Config): void {
     },
   })
   ctx.llm.registerConfigurableProviders([
-    { provider: PROVIDER, displayName: 'DeepSeek', settingsNs: NS, settingsPath: [] },
+    { provider: PROVIDER, displayName: 'DeepSeek', settingsNs: NS, settingsPath: [], consoleUrl: CONSOLE_URL },
   ])
+  // Endpoint interrogation is a configuration-time action over a draft, and
+  // every fact it reads — the catalog for the network-free answer, the
+  // endpoint, the stored credential — resolves through the same thunks the
+  // request path uses, so a settings change reaches the next interrogation.
+  // A configuration surface edits a redacted descriptor and never holds the
+  // stored secret, which is why the stored key is resolved here rather than
+  // required on the draft.
+  ctx.llm.registerModelDiscovery(NS, (request, signal) => discoverModels(
+    { ...request, ...signal === undefined ? {} : { signal } },
+    {
+      route: PROVIDER,
+      catalog: () => options().models,
+      baseURL: () => options().baseURL,
+      storedApiKey: () => resolveApiKey(options()),
+    },
+  ))
   // Route effects bind to this apply fiber via the stable `ctx` reference,
   // even when a swap runs inside the scoped settings callback below.
   const registration = ctx.llm.registerAdapter([PROVIDER], adapter)

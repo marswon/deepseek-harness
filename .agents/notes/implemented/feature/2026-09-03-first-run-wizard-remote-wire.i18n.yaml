@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-03-first-run-wizard-remote-wire.md
+2026-09-03-first-run-wizard-remote-wire.md: 646903a93d5e036aea51fa1fa87b49ca3f06bbfc
+2026-09-03-first-run-wizard-remote-wire.zh.md: 6867a1819b2fb39049b7227730f47200ea5590fe

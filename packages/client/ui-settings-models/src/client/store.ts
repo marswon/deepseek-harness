@@ -30,6 +30,8 @@ export interface ProviderDirectoryEntry {
   readonly settingsPath: readonly string[]
   readonly active: boolean
   readonly declared?: boolean
+  /** The provider's official get-a-key page, when the adapter knows one. */
+  readonly consoleUrl?: string
 }
 
 /**
@@ -51,6 +53,7 @@ export function joinProviderDirectory(
     settingsPath: [...entry.settingsPath],
     active: active.has(entry.provider),
     ...entry.declared === undefined ? {} : { declared: entry.declared },
+    ...entry.consoleUrl === undefined ? {} : { consoleUrl: entry.consoleUrl },
   }))
   for (const provider of registered) {
     if (declared.has(provider.id)) continue

@@ -1,8 +1,13 @@
 - dialog "添加一个 API Key 开始使用":
   - heading "添加一个 API Key 开始使用" [level=2]
-  - paragraph: 配置 DeepSeek 官方模型，即可开始使用。
-  - text: API 密钥
-  - textbox "API 密钥":
-    - /placeholder: 输入 API 密钥
-  - button "稍后配置"
-  - button "保存并继续" [disabled]
+  - list "设置步骤":
+    - listitem: 了解
+    - listitem: 配置
+    - listitem: 完成
+  - paragraph: API Key 是 DeepSeek 开放平台发放给你账户的一串密钥，用来标识身份并结算调用费用。把它粘贴到这里，应用才能替你调用模型。
+  - paragraph: 在 DeepSeek 开放平台注册并充值，进入「API Keys」页面创建一个密钥并复制。
+  - paragraph:
+    - link "前往 DeepSeek 开放平台获取":
+      - /url: https://platform.deepseek.com/api_keys
+  - button "下一步"
+  - button "使用其他提供方"
