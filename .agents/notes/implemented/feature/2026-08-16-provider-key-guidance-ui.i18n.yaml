@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-16-provider-key-guidance-ui.md
 2026-08-16-provider-key-guidance-ui.md: 7c34a138a5f307f20735d382337f053bf1c75bed
-2026-08-16-provider-key-guidance-ui.zh.md: 2e5cf36119659398f0e11cbb98d9de014b007f31
+2026-08-16-provider-key-guidance-ui.zh.md: 978ec83816d22ab6856ec5c6aa88fc4e9b82b00c

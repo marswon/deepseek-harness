@@ -6,10 +6,7 @@
  * with no network call at all: pi-ai's registry is the authoritative list for
  * its own providers, and it carries the capacities a listing endpoint would
  * not disclose. Only a route the catalog does not describe — a gateway, a
- * self-hosted server — is interrogated over the wire. A request carrying
- * `validate: true` is the exception: it asks whether the *key* works, which
- * only a live authenticated round-trip answers, so even a catalog route is
- * interrogated (at its catalog endpoint when the draft names none).
+ * self-hosted server — is interrogated over the wire.
  *
  * Neither path is a catalog refresh. Nothing here is stored: the request
  * carries a draft the user is still editing, and the reply is candidate
@@ -26,9 +23,9 @@
  */
 
 import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@deepseek-ai/dsh-llm'
-import type { LlmDiscoveredModel, LlmModelDiscoveryRequest } from '@deepseek-ai/dsh-llm'
+import type { LlmDiscoveredModel, LlmModelDiscoveryOperation } from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
-import { catalogModels, catalogProvider } from './catalog.ts'
+import { catalogModels } from './catalog.ts'
 
 /**
  * Protocols whose model listing this module can read: the two that speak
@@ -183,27 +180,31 @@ function usableProbeKey(raw: string): string {
   )
 }
 
+/** Host-owned profile inputs that a configuration draft deliberately omits. */
+export interface StoredModelDiscoveryProfile {
+  /** Deployment headers configured on the named route. */
+  readonly headers: Readonly<Record<string, string>> | undefined
+  /** Resolve the named route's credential only when the draft carries none. */
+  readonly resolveApiKey: () => Promise<string | undefined>
+}
+
 /**
  * Interrogate one draft provider endpoint for the models it advertises.
  * @param request - the endpoint, protocol, and one-shot credential to use.
- * @param storedApiKey - the credential the named route already stored, asked
- *   for only when the draft carries none and only on the path that reaches the
- *   network. A configuration surface never holds a stored secret — it edits a
- *   redacted descriptor — so without this an already-configured route would be
- *   interrogated unauthenticated and answer 401.
+ * @param storedProfile - Host-owned headers and lazy credential resolution for
+ *   the named route. It is read only on the path that reaches the network; the
+ *   credential is resolved only when the draft carries none.
  * @returns the advertised models in endpoint order.
  * @throws LlmError when the protocol has no readable listing, the endpoint
  *   refuses or fails the request, or the reply is not a model listing.
  */
 export async function discoverModels(
-  request: LlmModelDiscoveryRequest,
-  storedApiKey?: () => Promise<string | undefined>,
+  request: LlmModelDiscoveryOperation,
+  storedProfile?: () => StoredModelDiscoveryProfile | undefined,
 ): Promise<readonly LlmDiscoveredModel[]> {
   // A catalog route already has its answer, and a better one: the installed
   // entries carry context windows and output caps no listing endpoint reports.
-  // `validate` is the one exception: the caller asked whether the key works,
-  // which only a live authenticated round-trip can answer.
-  if (request.provider !== undefined && request.validate !== true) {
+  if (request.provider !== undefined) {
     const installed = catalogModels(request.provider)
     if (installed.size > 0) {
       return [...installed.values()].map(model => ({
@@ -214,19 +215,10 @@ export async function discoverModels(
       }))
     }
   }
-  // Under `validate` a catalog route keeps its endpoint even when the draft
-  // names none: the catalog's own base URL is the endpoint its key belongs to.
-  // An explicit empty baseURL still means "none", as it does without the flag.
-  const baseURL = request.baseURL !== undefined && request.baseURL.length > 0
-    ? request.baseURL
-    : request.provider === undefined ? undefined : catalogProvider(request.provider)?.baseUrl
-  if (baseURL === undefined) {
+  if (request.baseURL === undefined || request.baseURL.length === 0) {
     throw new LlmError(
-      request.provider !== undefined && catalogProvider(request.provider) !== undefined
-        ? `pi-ai records no endpoint for provider "${request.provider}"; set a baseURL, or enter this provider's`
-          + ' models by hand'
-        : `pi-ai ships no catalog for provider "${request.provider ?? ''}", so its models can only come from its`
-          + " endpoint; set a baseURL, or enter this provider's models by hand",
+      `pi-ai ships no catalog for provider "${request.provider ?? ''}", so its models can only come from its`
+      + " endpoint; set a baseURL, or enter this provider's models by hand",
       'DISCOVERY_FAILED',
     )
   }
@@ -243,25 +235,24 @@ export async function discoverModels(
       'DISCOVERY_UNSUPPORTED',
     )
   }
-  const url = listingUrl(baseURL)
-  // A key typed into the form wins: it is the one the user is testing, and it
-  // may be the replacement for exactly the stored key that is failing. The
-  // stored one is only asked for here, past the catalog short-circuit and the
-  // protocol check, so a route answered from the registry costs no credential
-  // lookup — and no diagnostic about a credential it never needed.
-  // A probe carrying no key stays unauthenticated, which is how a route that
-  // relies on the provider's own ambient discovery is meant to be asked.
-  const supplied = request.apiKey ?? await storedApiKey?.()
+  const url = listingUrl(request.baseURL)
+  // A key typed into the form wins: it may replace the stored key that is
+  // failing. The stored profile is asked past the catalog and protocol checks,
+  // and its credential resolver remains lazy so a typed key cannot fail over a
+  // stored credential it supersedes. A route may still authenticate through a
+  // deployment-owned Authorization header when neither key exists.
+  const stored = storedProfile?.()
+  const supplied = request.apiKey ?? await stored?.resolveApiKey()
   const apiKey = supplied === undefined ? undefined : usableProbeKey(supplied)
   let response: Response
   try {
+    const headers = new Headers(stored?.headers === undefined ? undefined : Object.entries(stored.headers))
+    headers.set('accept', 'application/json')
+    if (apiKey !== undefined) headers.set('authorization', `Bearer ${apiKey}`)
+    for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
     response = await fetch(url, {
       method: 'GET',
-      headers: {
-        accept: 'application/json',
-        ...apiKey === undefined ? {} : { authorization: `Bearer ${apiKey}` },
-        ...attributionHeaders(),
-      },
+      headers,
       ...request.signal === undefined ? {} : { signal: request.signal },
     })
   } catch (error: unknown) {

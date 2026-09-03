@@ -25,7 +25,7 @@ import {
 } from './scaffold.ts'
 import { ZH_BROWSER_LOCALE, saveFailureShot } from './support.ts'
 
-const SNAPSHOT_DIR = fileURLToPath(new URL('./snapshots/models-settings', import.meta.url))
+const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/models-settings', import.meta.url))
 const EMPTY_EXPECTED = join(SNAPSHOT_DIR, 'empty.expected.md')
 const CONFIGURED_EXPECTED = join(SNAPSHOT_DIR, 'configured.expected.md')
 const DECLARED_EXPECTED = join(SNAPSHOT_DIR, 'declared.expected.md')
@@ -47,7 +47,7 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
     // The scenario asserts the shipped Chinese copy, so the browser asks for it.
     page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
     tripwire = watchConsole(page)
-    await page.goto(scaffold.baseUrl, { waitUntil: 'load' })
+    await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
   }, 120_000)
 
@@ -74,11 +74,7 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
     await pick.waitFor({ timeout: 10_000 })
     await expect.poll(async () => pick.locator('option').count(), { timeout: 10_000 }).toBeGreaterThan(30)
     const options = await pick.locator('option').allTextContents()
-    // Tabled providers carry their pretty display name now; an untabled
-    // provider like minimax-cn keeps its raw route id as the label. The
-    // option VALUE is the route id either way, so the selection below is
-    // unaffected by the label change.
-    expect(options).toContain('Anthropic')
+    expect(options).toContain('anthropic')
     expect(options).toContain('minimax-cn')
     await pick.selectOption('minimax-cn')
     await dialog.getByRole('textbox', { name: 'API 密钥', exact: true }).waitFor({ timeout: 10_000 })
@@ -183,7 +179,7 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
 
-  it('selects and clears the discovered model catalog in one action', async () => {
+  it('filters the discovered model catalog and preserves hidden selections', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-models-picker'))
     const settingsDialog = page.getByRole('dialog', { name: '设置' })
     await settingsDialog.getByRole('button', { name: '编辑 minimax-cn' }).click()
@@ -199,11 +195,21 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
       Array.from({ length: count }, () => true),
     )
 
+    const search = picker.getByRole('searchbox', { name: '搜索模型' })
+    await search.fill('highspeed')
+    await expect.poll(async () => boxes.count()).toBe(1)
     await picker.getByRole('button', { name: '取消全选' }).click()
     expect(await boxes.evaluateAll(nodes => nodes.map(node => (node as HTMLInputElement).checked))).toEqual(
-      Array.from({ length: count }, () => false),
+      [false],
     )
+
+    await search.fill('')
+    await expect.poll(async () => boxes.count()).toBe(count)
+    const restored = await boxes.evaluateAll(nodes => nodes.map(node => (node as HTMLInputElement).checked))
+    expect(restored.filter(Boolean)).toHaveLength(count - 1)
+    expect(restored.filter(checked => !checked)).toHaveLength(1)
     await picker.getByRole('button', { name: '全选' }).waitFor()
+    await picker.getByRole('button', { name: '全选' }).click()
     const snapshot = await captureStableAria(
       page,
       '[role="dialog"][aria-label="选择要添加的模型"]',
@@ -211,7 +217,6 @@ describe('web e2e: Models settings page configures a dormant provider', () => {
     )
     await compareOrRefreshGolden(MODEL_PICKER_EXPECTED, snapshot, MODE)
 
-    await picker.getByRole('button', { name: '全选' }).click()
     expect(await boxes.evaluateAll(nodes => nodes.map(node => (node as HTMLInputElement).checked))).toEqual(
       Array.from({ length: count }, () => true),
     )

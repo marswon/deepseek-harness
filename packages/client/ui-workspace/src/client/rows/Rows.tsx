@@ -8,15 +8,15 @@
 import { useState } from 'react'
 import clsx from 'clsx'
 import {
-  HoverCard, IconArchiveOutline20, IconBranchOutline16, IconEditOutline16,
-  IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16, IconPlusOutline16,
-  IconTrashOutline16, IconTriangleRightFill14, Menu, StateDot,
+  HoverCard, IconAlarmClockOutline16, IconArchiveOutline20, IconBranchOutline16,
+  IconEditOutline16, IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16,
+  IconPlusOutline16, IconTrashOutline16, IconTriangleRightFill14, Menu, relativeTime,
+  StateDot,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
-import { abbreviateHomePath } from '@deepseek-ai/dsh-client-runtime/client'
+import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { GroupNode, SearchResultNode, SessionNode } from '../tree.ts'
-import { relativeTime } from '../tree.ts'
 import css from './Rows.module.css'
 
 /** The standard locale seat, prop-passed from the browser root. */
@@ -113,9 +113,8 @@ export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, home,
   group: GroupNode
   onToggle: () => void
   onCreate: () => void
-  /** Real-Workspace actions; absent for the ungrouped bucket (no menu shown).
-   * `reveal` is present only when the Host can open paths natively. */
-  actions?: { rename: () => void; delete: () => void; reveal?: (() => void) | undefined } | undefined
+  /** Real-Workspace actions; absent for the ungrouped bucket (no menu shown). */
+  actions?: { rename: () => void; delete: () => void } | undefined
   /** Present only for real Workspace rows in the grouped view. */
   drag?: WorkspaceRowDragProps | undefined
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
@@ -128,9 +127,6 @@ export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, home,
   const active = group.expanded && group.containsCurrent
   const [menuOpen, setMenuOpen] = useState(false)
   const workspaceMenuItems = [
-    ...(actions?.reveal === undefined
-      ? []
-      : [{ id: 'reveal', label: t('menu.showInFolder'), icon: <IconFolderOpen16 /> }]),
     { id: 'rename', label: t('rename'), icon: <IconEditOutline16 /> },
     { id: 'delete', label: t('delete.workspace'), icon: <IconTrashOutline16 />, danger: true },
   ]
@@ -169,9 +165,10 @@ export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, home,
               setMenuOpen(false)
               // Unknown ids leave before the dispatch: a future menu row must
               // not inherit the destructive branch as an else fallback.
-              if (id === 'reveal') actions.reveal?.()
-              else if (id === 'rename') actions.rename()
-              else if (id === 'delete') actions.delete()
+              /* v8 ignore next -- Menu can emit only the rename and delete rows supplied above. */
+              if (id !== 'rename' && id !== 'delete') return
+              if (id === 'rename') actions.rename()
+              else actions.delete()
             }}
             portal
             closeOnPointerLeave
@@ -283,6 +280,21 @@ function SessionStatusDots({ statuses }: { statuses: readonly [SessionStatus, ..
   )
 }
 
+/** Non-interactive active-Schedule marker; the enclosing row remains the only action. */
+function ActiveScheduleIndicator({ t, search = false }: { t: RowTranslate; search?: boolean }) {
+  const label = t('schedule.active')
+  return (
+    <span
+      className={clsx(css.scheduleIndicator, search && css.searchScheduleIndicator)}
+      role="img"
+      aria-label={label}
+      title={label}
+    >
+      <IconAlarmClockOutline16 />
+    </span>
+  )
+}
+
 /** Hover-card body: full title, relative time, and every relevant live status. */
 function SessionHoverContent({ node, now, t }: { node: SessionNode; now: number; t: RowTranslate }) {
   const statuses = sessionStatuses(node, t)
@@ -336,9 +348,10 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
           )}
         </span>
         <span className={css.searchResultTitle}>{result.title}</span>
+        {result.hasActiveSchedule && <ActiveScheduleIndicator t={t} search />}
       </span>
       <span className={css.searchResultMeta}>
-        <span className={css.searchResultWorkspace}>{result.workspace}</span>
+        <span className={css.searchResultWorkspace}>{result.workspace || t('group.ungrouped')}</span>
         {result.snippet !== undefined && (
           <span className={css.searchResultSnippet}>{result.snippet}</span>
         )}
@@ -440,6 +453,7 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
         </span>
       )}
       <span className={css.title}>{title}</span>
+      {row.hasActiveSchedule && <ActiveScheduleIndicator t={t} />}
       {/* A blank New Session row is a provisional placeholder: nothing has
           happened in it yet, so a "now" timestamp and the row verbs
           (rename/fork/archive) would all act on content that does not

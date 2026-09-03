@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-17-desktop-recovery-path-hardening.md
 2026-08-17-desktop-recovery-path-hardening.md: d48b1b0812cd3b2cc073436eb36879af54e66f63
-2026-08-17-desktop-recovery-path-hardening.zh.md: a500f9623633b10512e285c77dcb2948f3d6cc15
+2026-08-17-desktop-recovery-path-hardening.zh.md: ff8accb7ed30ad9942b3ac8b80d0b8c4cddf983f

@@ -33,8 +33,15 @@ describe('dsh web boot smoke', () => {
         paths,
         { ...process.env },
       ))
-      expect(new URL(url).hostname).toBe('127.0.0.1')
-      const response = await fetch(url)
+      const readyUrl = new URL(url)
+      expect(readyUrl.hostname).toBe('127.0.0.1')
+      // The process token exchanges for a session cookie (303 + Set-Cookie);
+      // bare fetches of the UI are 401 without it.
+      const login = await fetch(url, { redirect: 'manual' })
+      expect(login.status).toBe(303)
+      const cookie = login.headers.get('set-cookie')?.split(';', 1)[0] ?? ''
+      expect(cookie).not.toBe('')
+      const response = await fetch(`${readyUrl.origin}/`, { headers: { cookie } })
       expect(response.status).toBe(200)
       expect(await response.text()).toContain('<html')
     } finally {

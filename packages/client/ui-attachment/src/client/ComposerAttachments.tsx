@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
-  ComposerAttachment, ComposerAttachmentsProps, ComposerImageAttachment,
+  ComposerAttachment, ComposerAttachmentsProps,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { AttachmentRail } from '../AttachmentRail.tsx'
 import type { AttachmentRailItem } from '../AttachmentRail.tsx'
@@ -18,7 +18,7 @@ interface ComposerRailItem extends AttachmentRailItem {
 export function ComposerAttachments({
   attachments, canAcceptDrop, onAddImages, onRemoveImage, dropLimits, t,
 }: ComposerAttachmentsProps) {
-  const [preview, setPreview] = useState<ComposerImageAttachment | null>(null)
+  const [preview, setPreview] = useState<ComposerAttachment | null>(null)
   const [dragActive, setDragActive] = useState(false)
   const dragDepth = useRef(0)
   const closePreview = useCallback(() => { setPreview(null) }, [])
@@ -78,25 +78,13 @@ export function ComposerAttachments({
     }
   }, [canAcceptDrop, onAddImages])
 
-  // Rail items with their strings resolved here: the attachment atoms are
-  // zero-cordis and read no locale. Images keep their thumbnail + original
-  // preview; text files render as name chips (no open affordance).
-  const railItems = useMemo<ComposerRailItem[]>(() => attachments.map(attachment => (
-    attachment.kind === 'image'
-      ? {
-        id: attachment.id,
-        previewUrl: attachment.previewUrl,
-        alt: attachment.file.name || t('image.pending'),
-        removeLabel: t('image.remove', { name: attachment.file.name }),
-        attachment,
-      }
-      : {
-        id: attachment.id,
-        alt: attachment.name,
-        removeLabel: t('file.remove', { name: attachment.name }),
-        attachment,
-      }
-  )), [attachments, t])
+  const railItems = useMemo<ComposerRailItem[]>(() => attachments.map(attachment => ({
+    id: attachment.id,
+    previewUrl: attachment.previewUrl,
+    alt: attachment.file.name || t('image.pending'),
+    removeLabel: t('image.remove', { name: attachment.file.name }),
+    attachment,
+  })), [attachments, t])
 
   return (
     <>
@@ -111,10 +99,7 @@ export function ComposerAttachments({
           <AttachmentRail
             items={railItems}
             labels={attachmentRailLabels(t)}
-            onOpen={(item) => {
-              /* v8 ignore next -- defensive: the rail renders no open control on file chips, so only image items arrive. */
-              if (item.attachment.kind === 'image') setPreview(item.attachment)
-            }}
+            onOpen={(item) => { setPreview(item.attachment) }}
             onRemove={(item) => { onRemoveImage(item.attachment.id) }}
           />
         </div>

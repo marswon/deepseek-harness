@@ -1,16 +1,18 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {
-  SessionId, SessionListState, SessionSummary, WorkspaceId, WorkspaceListState, WorkspaceView,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+  WorkspaceId, WorkspaceSnapshot, WorkspaceView,
+} from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { SessionPendingInteractionSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type { WorkspaceBrowserProps } from '../src/client/contract/slots.ts'
 import { createWorkspaceViewStore, FLAT_SESSION_ORDER_KEY } from '../src/client/stores.ts'
 import { UNGROUPED_KEY } from '../src/client/tree.ts'
-import { WorkspaceBrowser } from '../src/client/WorkspaceBrowser.tsx'
+import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
@@ -38,10 +40,11 @@ const workspace = (id: string, sessionIds: string[], title = id): WorkspaceView 
   workspaceId: wid(id), path: `/projects/${id}`, title,
   sessionIds: sessionIds.map(sid), createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
 })
-const workspaceState = (items: readonly WorkspaceView[], archivedSessionIds: readonly SessionId[] = []): WorkspaceListState => ({
-  items, archivedSessionIds, state: 'idle', phase: 'ready', error: null, baselinesReady: true,
-  recentWorkspaceId: items[0]?.workspaceId,
-})
+const workspaceState = (
+  items: readonly WorkspaceView[],
+  archivedSessionIds: readonly SessionId[] = [],
+): WorkspaceSnapshot => ({ items, archivedSessionIds, state: 'idle', phase: 'ready', error: null })
+const noPendingInteraction: SessionPendingInteractionSnapshot = new Map()
 function hook<T>(snapshot: T) {
   return function select<S>(selector: (state: T) => S): S { return selector(snapshot) }
 }
@@ -64,6 +67,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     wide: true,
     expandSidebar: vi.fn(),
     useSessions: hook(sessionState([])),
+    useSessionPendingInteraction: hook(noPendingInteraction),
     useWorkspaces: hook(workspaceState([])),
     useStore: bindSnapshotSelector(store),
     actions: store.actions,
@@ -79,16 +83,8 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     insertWorkspaceBefore: vi.fn(async () => {}),
     insertSessionBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
-    isLoopback: true,
-    openWorkspacePath: vi.fn(),
-    useHostDescription: bindSnapshotSelector({
-      getSnapshot: () => ({
-        version: '0', cwd: '/tmp', attachedSessions: 0, home: '/home/u',
-        canOpenPath: true, canRevealPath: true,
-      }),
-      subscribe: () => () => {},
-    }),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
+    useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
     renderSlot: ((_name: string, owner: { open: boolean }) => (owner.open ? <div data-testid="directory-flow" /> : null)) as never,
     t,
     ...overrides,
@@ -113,9 +109,7 @@ describe('WorkspaceBrowser', () => {
           path: '/home/u/Documents/project',
           title: 'Project',
         }])),
-        useHostDescription: selector => selector({
-          version: '0', cwd: '/tmp', attachedSessions: 0, home: '/home/u', canOpenPath: false, canRevealPath: false,
-        }),
+        useHostInfo: selector => selector({ home: '/home/u', isLoopback: true }),
       })
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
       act(() => { vi.advanceTimersByTime(500) })
@@ -130,7 +124,6 @@ describe('WorkspaceBrowser', () => {
       ...workspaceState([]),
       phase: 'pending' as const,
       state: 'loading' as const,
-      baselinesReady: false,
     }
     const b = mount({ useWorkspaces: hook(pending) })
     act(() => {
@@ -186,50 +179,6 @@ describe('WorkspaceBrowser', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBeNull()
     expect(b.store.getSnapshot().groupBy).toBe('workspace')
-  })
-
-  it('reveals a workspace in the OS file manager only when the Host can open paths', () => {
-    const openWorkspacePath = vi.fn()
-    mount({
-      openWorkspacePath,
-      useWorkspaces: hook(workspaceState([workspace('alpha', [])])),
-    })
-    fireEvent.click(screen.getByRole('button', { name: '工作区“alpha”的操作' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: '在文件夹中显示' }))
-    expect(openWorkspacePath).toHaveBeenCalledWith('/projects/alpha')
-    cleanup()
-
-    // Off the loopback gate the row disappears from the menu entirely.
-    mount({
-      isLoopback: false,
-      useWorkspaces: hook(workspaceState([workspace('alpha', [])])),
-    })
-    fireEvent.click(screen.getByRole('button', { name: '工作区“alpha”的操作' }))
-    expect(screen.queryByRole('menuitem', { name: '在文件夹中显示' })).toBeNull()
-    cleanup()
-
-    // Same when the Host reports no native open capability.
-    mount({
-      useHostDescription: bindSnapshotSelector({
-        getSnapshot: () => ({ canOpenPath: false }),
-        subscribe: () => () => {},
-      } as never),
-      useWorkspaces: hook(workspaceState([workspace('alpha', [])])),
-    })
-    fireEvent.click(screen.getByRole('button', { name: '工作区“alpha”的操作' }))
-    expect(screen.queryByRole('menuitem', { name: '在文件夹中显示' })).toBeNull()
-    cleanup()
-
-    // And before the first handshake publishes a description at all.
-    mount({
-      useHostDescription: bindSnapshotSelector({
-        getSnapshot: () => undefined,
-        subscribe: () => () => {},
-      }),
-      useWorkspaces: hook(workspaceState([workspace('alpha', [])])),
-    })
-    fireEvent.click(screen.getByRole('button', { name: '工作区“alpha”的操作' }))
-    expect(screen.queryByRole('menuitem', { name: '在文件夹中显示' })).toBeNull()
   })
 
   it('persists flat-list drag order locally and applies Last updated within that account', async () => {
@@ -323,6 +272,79 @@ describe('WorkspaceBrowser', () => {
     expect(b.store.getSnapshot().groupExpansion).toEqual({ alpha: true })
     expect(screen.queryByText('session-6')).toBeNull()
     expect(screen.getByRole('button', { name: '展开其余 2 个会话' })).toBeTruthy()
+  })
+
+  it('keeps the blank New Session outside the five-row folding quota', () => {
+    const ordinary = Array.from({ length: 6 }, (_, index) => summary(`session-${index + 1}`, 6 - index))
+    const blank = summary('blank', 7, { blank: true })
+    const b = mount({
+      useSessions: hook(sessionState([blank, ...ordinary], { current: blank.id })),
+      useWorkspaces: hook(workspaceState([workspace('alpha', [blank.id, ...ordinary.map(item => item.id)])])),
+    })
+    expect(screen.getByText('新会话')).toBeTruthy()
+    for (const item of ordinary.slice(0, 5)) expect(screen.getByText(item.displayTitle)).toBeTruthy()
+    expect(screen.queryByText('session-6')).toBeNull()
+    expect(screen.getByRole('button', { name: '展开其余 1 个会话' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '展开其余 1 个会话' }))
+    expect(screen.getByText('session-6')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '收起' }))
+    expect(screen.queryByText('session-6')).toBeNull()
+
+    rerender(b, {
+      useSessions: hook(sessionState([{ ...blank, blank: false }, ...ordinary], { current: blank.id })),
+    })
+    expect(screen.getByText('blank')).toBeTruthy()
+    expect(screen.queryByText('session-5')).toBeNull()
+    expect(screen.getByRole('button', { name: '展开其余 2 个会话' })).toBeTruthy()
+  })
+
+  it('anchors collapsed drags before hidden rows so the source stays visible', async () => {
+    const ordinary = Array.from({ length: 6 }, (_, index) => summary(`session-${index + 1}`, 6 - index))
+    const blank = summary('blank', 7, { blank: true })
+    const insertSessionBefore = vi.fn(async () => {})
+    const b = mount({
+      useSessions: hook(sessionState([blank, ...ordinary], { current: blank.id })),
+      useWorkspaces: hook(workspaceState([workspace('alpha', [blank.id, ...ordinary.map(item => item.id)])])),
+      insertSessionBefore,
+    })
+    await waitFor(() => {
+      expect(b.store.getSnapshot().sessionOrderByAccount.alpha)
+        .toEqual(['blank', 'session-1', 'session-2', 'session-3', 'session-4', 'session-5', 'session-6'])
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '展开其余 1 个会话' }))
+    const blankRow = screen.getByText('新会话').closest('[role="treeitem"]') as HTMLElement
+    const session6 = screen.getByText('session-6').closest('[role="treeitem"]') as HTMLElement
+    session6.getBoundingClientRect = () => ({
+      top: 200, bottom: 234, left: 0, right: 200, width: 200, height: 34,
+      x: 0, y: 200, toJSON: () => ({}),
+    })
+    fireEvent.dragStart(blankRow, { dataTransfer: dragData() })
+    fireDrag(session6, 'drop', 230)
+    expect(b.store.getSnapshot().sessionOrderByAccount.alpha)
+      .toEqual(['session-1', 'session-2', 'session-3', 'session-4', 'session-5', 'session-6', 'blank'])
+
+    insertSessionBefore.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: '收起' }))
+    const collapsedBlank = screen.getByText('新会话').closest('[role="treeitem"]') as HTMLElement
+    collapsedBlank.getBoundingClientRect = () => ({
+      top: 200, bottom: 234, left: 0, right: 200, width: 200, height: 34,
+      x: 0, y: 200, toJSON: () => ({}),
+    })
+    const session5 = screen.getByText('session-5').closest('[role="treeitem"]') as HTMLElement
+    fireEvent.dragStart(session5, { dataTransfer: dragData() })
+    fireDrag(collapsedBlank, 'drop', 205)
+    expect(insertSessionBefore).not.toHaveBeenCalled()
+
+    const session4 = screen.getByText('session-4').closest('[role="treeitem"]') as HTMLElement
+    fireEvent.dragStart(session4, { dataTransfer: dragData() })
+    fireDrag(collapsedBlank, 'drop', 205)
+    expect(b.store.getSnapshot().sessionOrderByAccount.alpha)
+      .toEqual(['session-1', 'session-2', 'session-3', 'session-5', 'session-4', 'session-6', 'blank'])
+    expect(insertSessionBefore).toHaveBeenCalledWith(wid('alpha'), sid('session-4'), sid('session-6'))
+    expect(screen.getByText('session-4')).toBeTruthy()
+    expect(screen.queryByText('session-6')).toBeNull()
   })
 
   it('shares one editable order across modes and promotes only while Last updated is active', async () => {
@@ -518,6 +540,72 @@ describe('WorkspaceBrowser', () => {
     expect(screen.queryByText('新会话')).toBeNull()
     fireEvent.change(screen.getByPlaceholderText('搜索会话…'), { target: { value: '新会话' } })
     expect(screen.queryByText('新会话')).toBeNull()
+  })
+
+  it('promotes the blank selected by New Session in its grouped and flat orders', async () => {
+    const items = [
+      summary('old', 100),
+      summary('blank', 150, { blank: true }),
+      summary('mid', 200),
+    ]
+    const startSession = vi.fn()
+    const b = mount({
+      useSessions: hook(sessionState(items)),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['old', 'blank', 'mid'])])),
+      startSession,
+    })
+    await waitFor(() => {
+      expect(b.store.getSnapshot().sessionOrderByAccount.alpha).toEqual(['old', 'blank', 'mid'])
+    })
+    startSession.mockImplementation(() => {
+      rerender(b, { useSessions: hook(sessionState(items, { current: sid('blank') })) })
+    })
+    fireEvent.click(screen.getByRole('button', { name: '在“alpha”中新建会话' }))
+    expect(startSession).toHaveBeenCalledWith(wid('alpha'))
+    await waitFor(() => {
+      expect(b.store.getSnapshot().sessionOrderByAccount.alpha).toEqual(['blank', 'old', 'mid'])
+      expect(b.store.getSnapshot().sessionOrderByAccount[FLAT_SESSION_ORDER_KEY]).toEqual(['blank'])
+    })
+    b.store.actions.setGroupBy('flat')
+    await waitFor(() => {
+      expect(b.store.getSnapshot().sessionOrderByAccount[FLAT_SESSION_ORDER_KEY]).toEqual(['blank', 'mid', 'old'])
+    })
+  })
+
+  it('does not repeat blank promotion after a manual drag or the first prompt', async () => {
+    const insertSessionBefore = vi.fn(async () => {})
+    const b = mount({
+      useSessions: hook(sessionState([
+        summary('old', 100),
+        summary('blank', 150, { blank: true }),
+        summary('mid', 200),
+      ], { current: sid('blank') })),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['old', 'blank', 'mid'])])),
+      insertSessionBefore,
+    })
+    await waitFor(() => {
+      expect(b.store.getSnapshot().sessionOrderByAccount.alpha).toEqual(['blank', 'old', 'mid'])
+    })
+    const blank = screen.getByText('新会话').closest('[role="treeitem"]') as HTMLElement
+    const mid = screen.getByText('mid').closest('[role="treeitem"]') as HTMLElement
+    mid.getBoundingClientRect = () => ({
+      top: 150, bottom: 184, left: 0, right: 200, width: 200, height: 34, x: 0, y: 150, toJSON: () => ({}),
+    })
+    fireEvent.dragStart(blank, { dataTransfer: dragData() })
+    fireDrag(mid, 'drop', 180)
+    expect(b.store.getSnapshot().sessionOrderByAccount.alpha).toEqual(['old', 'mid', 'blank'])
+    expect(insertSessionBefore).toHaveBeenCalledWith(wid('alpha'), sid('blank'), undefined)
+
+    rerender(b, {
+      useSessions: hook(sessionState([
+        summary('old', 100),
+        summary('blank', 150),
+        summary('mid', 200),
+      ], { current: sid('blank') })),
+    })
+    await waitFor(() => {
+      expect(b.store.getSnapshot().sessionOrderByAccount.alpha).toEqual(['old', 'mid', 'blank'])
+    })
   })
 
   it('shows local metadata matches immediately, then clears back to the grouped tree', async () => {

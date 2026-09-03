@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-对话界面此前可以打开产出文件或工具参数中的文件（`host.openPath`，见[文件打开 note](2026-07-28-tool-call-file-open-in-os.md)），也可以从产出文件行打开 workspace 文件夹，但无法在宿主的文件管理器中选中某个文件——也就是用户在路径旁边期待的“它到底落在哪儿”手势。用默认应用打开所在目录并不等价：在 macOS 与 Windows 上，文件管理器有专门的“选中并显示”调用方式。
+对话界面此前可以打开产出文件或工具参数中的文件（`host.openPath`，见[文件打开 note](2026-07-28-tool-call-file-open-in-os.zh.md)），也可以从产出文件行打开 workspace 文件夹，但无法在宿主的文件管理器中选中某个文件——也就是用户在路径旁边期待的“它到底落在哪儿”手势。用默认应用打开所在目录并不等价：在 macOS 与 Windows 上，文件管理器有专门的“选中并显示”调用方式。
 
 ## Decision
 

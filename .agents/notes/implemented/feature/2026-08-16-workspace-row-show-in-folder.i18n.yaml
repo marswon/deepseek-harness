@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-16-workspace-row-show-in-folder.md
 2026-08-16-workspace-row-show-in-folder.md: bfb72e0fbd7f3451c7d95b1c961b3dff1265dda8
-2026-08-16-workspace-row-show-in-folder.zh.md: 73de8a3fc68ecc7880e7855f60423ed692a25cda
+2026-08-16-workspace-row-show-in-folder.zh.md: 95c812a412824cf5da5fc72dc262fdace9e305fd

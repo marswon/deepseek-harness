@@ -92,60 +92,6 @@ describe('catalog-route model discovery', () => {
     await expect(ctx.llm.discoverModels('llm-pi-ai', { provider: 'deepseek' })).resolves.not.toHaveLength(0)
   })
 
-  it('interrogates a catalog route over the wire when the caller asks to validate the key', async () => {
-    // `validate: true` is the check-key action: the registry answer cannot say
-    // whether the key works, so even a catalog route pays the round-trip.
-    const server = await listingServer({
-      body: JSON.stringify({ data: [{ id: 'from-the-endpoint' }] }),
-    })
-    const ctx = await harness()
-
-    const models = await ctx.llm.discoverModels('llm-pi-ai', {
-      provider: 'deepseek',
-      baseURL: server.url,
-      apiKey: 'probe-key',
-      validate: true,
-    })
-
-    expect(models).toEqual([{ id: 'from-the-endpoint' }])
-    expect(server.paths).toEqual(['/models'])
-    expect(server.headers[0]?.authorization).toBe('Bearer probe-key')
-  })
-
-  it('keeps the registry short-circuit when validate is false', async () => {
-    const server = await listingServer({ body: JSON.stringify({ data: [{ id: 'from-the-endpoint' }] }) })
-    const ctx = await harness()
-
-    await ctx.llm.discoverModels('llm-pi-ai', { provider: 'deepseek', baseURL: server.url, validate: false })
-
-    expect(server.paths).toEqual([])
-  })
-
-  it('validates a catalog route at its catalog endpoint when the draft names none', async () => {
-    // The form's endpoint field is empty for an uncustomized catalog route;
-    // the key being checked still belongs to the provider's own endpoint.
-    const requests: string[] = []
-    vi.stubGlobal('fetch', async (url: string | URL) => {
-      requests.push(String(url))
-      return new Response(JSON.stringify({ data: [{ id: 'm' }] }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    })
-    const ctx = await harness()
-
-    await ctx.llm.discoverModels('llm-pi-ai', { provider: 'deepseek', apiKey: 'probe-key', validate: true })
-
-    expect(requests).toEqual(['https://api.deepseek.com/models'])
-  })
-
-  it('says a validated catalog route with no recorded endpoint needs a baseURL', async () => {
-    // amazon-bedrock ships in the catalog but records no base URL, so there is
-    // no endpoint to fall back to — and "ships no catalog" would be a lie.
-    await expect(discoverModels({ provider: 'amazon-bedrock', validate: true }))
-      .rejects.toThrow(/records no endpoint for provider "amazon-bedrock".*set a baseURL/s)
-  })
-
   it('says where a route the catalog does not describe must get its models', async () => {
     const ctx = await harness()
     await expect(ctx.llm.discoverModels('llm-pi-ai', { provider: 'acme-gateway' }))
@@ -200,7 +146,7 @@ describe('draft-provider model discovery', () => {
     expect(server.headers[0]?.authorization).toBeUndefined()
   })
 
-  it('authenticates a configured route the draft cannot supply a key for', async () => {
+  it('authenticates configured routes the draft cannot supply a key for', async () => {
     // What the Models page actually sends after a key is saved: the form holds
     // the redacted descriptor, so the draft names the route and the endpoint
     // and no credential at all. Interrogating unauthenticated would answer 401
@@ -216,20 +162,34 @@ describe('draft-provider model discovery', () => {
           apiKeyEnv: 'ACME_GATEWAY_KEY',
           api: 'openai-completions',
           baseURL: server.url,
+          headers: { 'X-Company-Code': 'private-tenant' },
           models: [{ id: 'acme-large' }],
+        },
+        'plain-gateway': {
+          apiKeyEnv: 'ACME_GATEWAY_KEY',
+          api: 'openai-completions',
+          baseURL: server.url,
+          models: [{ id: 'plain-large' }],
         },
       },
     })
 
     await ctx.llm.discoverModels('llm-pi-ai', { provider: 'acme-gateway', baseURL: server.url })
     // A key typed into the form is the one being tested — possibly the
-    // replacement for the stored one — so it wins.
+    // replacement for the stored one — so it wins without resolving the
+    // missing stored credential, while the route's headers still apply.
+    Reflect.deleteProperty(process.env, 'ACME_GATEWAY_KEY')
     await ctx.llm.discoverModels('llm-pi-ai', { provider: 'acme-gateway', baseURL: server.url, apiKey: 'typed' })
     // A route no profile declares yet is the create case: nothing is stored.
     await ctx.llm.discoverModels('llm-pi-ai', { provider: 'not-declared-yet', baseURL: server.url })
+    // A configured route without deployment headers still contributes its
+    // stored credential without inventing a header map.
+    await ctx.llm.discoverModels('llm-pi-ai', { provider: 'plain-gateway', baseURL: server.url, apiKey: 'plain-typed' })
 
     expect(server.headers.map(headers => headers.authorization))
-      .toEqual(['Bearer stored-key', 'Bearer typed', undefined])
+      .toEqual(['Bearer stored-key', 'Bearer typed', undefined, 'Bearer plain-typed'])
+    expect(server.headers.map(headers => headers['x-company-code']))
+      .toEqual(['private-tenant', 'private-tenant', undefined, undefined])
   })
 
   it('leaves a catalog route\'s credential unresolved, having never reached the network', async () => {
@@ -347,8 +307,7 @@ describe('draft-provider model discovery', () => {
     })
     const probe = ctx.llm.discoverModels('llm-pi-ai', {
       baseURL: 'https://slow.example/v1',
-      signal: controller.signal,
-    })
+    }, controller.signal)
     await bodyRead.promise
     controller.abort('test cancellation')
 
@@ -360,8 +319,7 @@ describe('draft-provider model discovery', () => {
     const aborted = AbortSignal.abort('test cancellation')
     await expect(ctx.llm.discoverModels('llm-pi-ai', {
       baseURL: 'http://127.0.0.1:9/v1',
-      signal: aborted,
-    })).rejects.toMatchObject({ code: 'ABORTED' })
+    }, aborted)).rejects.toMatchObject({ code: 'ABORTED' })
   })
 
   it('is offered for the namespace, and refuses one it does not serve', async () => {

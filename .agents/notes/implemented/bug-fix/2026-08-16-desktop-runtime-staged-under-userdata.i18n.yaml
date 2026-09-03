@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-16-desktop-runtime-staged-under-userdata.md
 2026-08-16-desktop-runtime-staged-under-userdata.md: 5255c7c0780f9e3f167ced667d14028570f34580
-2026-08-16-desktop-runtime-staged-under-userdata.zh.md: a5f90c7531d1944b05af15a5572af164f1e2f05a
+2026-08-16-desktop-runtime-staged-under-userdata.zh.md: 0d6b755be36af34008d945afaf8eea400562103c

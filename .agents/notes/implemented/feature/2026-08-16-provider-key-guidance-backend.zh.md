@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-Models 设置页此前能列出可配置提供方、能询问起草中的端点（见[端点询问笔记](../architecture/2026-08-04-draft-provider-endpoint-interrogation.md)），但两个 Cherry Studio 式指引手势没有后端答案。其一，“这个提供方的密钥去哪获取？”：目录条目只给出提供方名称和 settings 地址，没有官方控制台页面，获取密钥链接只能让 UI 硬编码 URL。其二，“这条密钥能用吗？”：对 catalog 路由，`discoverModels` 直接由适配器注册表作答、完全不联网——这是“有哪些模型？”的正确答案，却对“这条密钥被接受吗？”毫无用处。
+Models 设置页此前能列出可配置提供方、能询问起草中的端点（见[端点询问笔记](../architecture/2026-08-04-draft-provider-endpoint-interrogation.zh.md)），但两个 Cherry Studio 式指引手势没有后端答案。其一，“这个提供方的密钥去哪获取？”：目录条目只给出提供方名称和 settings 地址，没有官方控制台页面，获取密钥链接只能让 UI 硬编码 URL。其二，“这条密钥能用吗？”：对 catalog 路由，`discoverModels` 直接由适配器注册表作答、完全不联网——这是“有哪些模型？”的正确答案，却对“这条密钥被接受吗？”毫无用处。
 
 ## Decision
 

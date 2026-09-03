@@ -6,7 +6,6 @@ import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { createUserMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import FileSettingsProvider from '@deepseek-ai/dsh-settings-file'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
 import { getBuiltinModels } from '@earendil-works/pi-ai/providers/all'
@@ -15,6 +14,7 @@ import type { Api, Model, OpenAICompletionsCompat, Provider } from '@earendil-wo
 import { resolveProfiles } from '../src/config.ts'
 import { buildProvider, supportedProtocols } from '../src/provider.ts'
 import { assemble } from './assemble.ts'
+import { memoryAuth } from './auth-double.ts'
 import { closeMockServers, mockServer, textEvents } from './mock-server.ts'
 
 const homes: string[] = []
@@ -151,14 +151,6 @@ describe('hand-declared providers', () => {
     expect(directory.filter(entry => entry.declared).map(entry => entry.provider))
       .toEqual(['acme-gateway'])
     expect(directory.find(entry => entry.provider === 'deepseek')?.declared).toBe(false)
-    // A provider the tables name gets its pretty spelling and console page; a
-    // hand-declared route keeps its profile name and gains no consoleUrl,
-    // since no official key page is known for it.
-    expect(directory.find(entry => entry.provider === 'deepseek'))
-      .toMatchObject({ displayName: 'DeepSeek', consoleUrl: 'https://platform.deepseek.com/api-keys' })
-    expect(directory.find(entry => entry.provider === 'acme-gateway'))
-      .toMatchObject({ displayName: 'Acme Gateway' })
-    expect(directory.find(entry => entry.provider === 'acme-gateway')).not.toHaveProperty('consoleUrl')
   })
 
   it('sizes a model the catalog cannot describe from the route\u2019s own fallbacks', () => {
@@ -234,7 +226,7 @@ describe('hand-declared providers', () => {
     // a written section, the plugin's own registration, and `ctx.llm`.
     const dir = await home()
     const ctx = await bootWithSettings(dir, {})
-    await ctx.settings.update(settingsNamespace('llm-pi-ai'), {
+    await ctx.settings.update('llm-pi-ai', {
       providers: {
         'acme-gateway': {
           api: 'openai-completions',
@@ -644,7 +636,7 @@ describe('per-model reasoning efforts', () => {
   it('narrows a catalog model’s levels in place', () => {
     const [catalogModel] = getBuiltinModels('deepseek')
     if (catalogModel === undefined) throw new Error('the installed catalog ships no deepseek model')
-    expect(getSupportedThinkingLevels(catalogModel as Model<Api>)).toEqual(['off', 'high', 'max'])
+    expect(getSupportedThinkingLevels(catalogModel as Model<Api>)).toEqual(['off', 'low', 'high', 'max'])
 
     const model = modelOf({
       deepseek: { models: [{ id: catalogModel.id, reasoningEfforts: { off: null, high: 'high' } }] },
@@ -927,6 +919,31 @@ describe('compat switches', () => {
     })
   })
 
+  it('carries private-endpoint stream and reasoning controls', () => {
+    const models = modelsOf({
+      'acme-baseten': {
+        api: 'openai-completions',
+        baseURL: 'https://acme.test',
+        models: [{
+          id: 'reasoning-local',
+          compat: {
+            supportsFinishReason: false,
+            thinkingFormat: 'baseten',
+            chatTemplateArgs: { enable_thinking: { $var: 'thinking.enabled' } },
+            supportsThinkingTokenBudget: true,
+          },
+        }],
+      },
+    }, 'acme-baseten')
+
+    expect(models.get('reasoning-local')?.compat).toEqual({
+      supportsFinishReason: false,
+      thinkingFormat: 'baseten',
+      chatTemplateArgs: { enable_thinking: { $var: 'thinking.enabled' } },
+      supportsThinkingTokenBudget: true,
+    })
+  })
+
   it('rejects a model switch on an unrecognized protocol as having no configurable compat', () => {
     expect(() => resolveProfiles({
       'acme-gateway': {
@@ -944,7 +961,7 @@ describe('compat switches', () => {
     // and `Model.compat`.
     const dir = await home()
     const ctx = await bootWithSettings(dir, {})
-    await expect(ctx.settings.update(settingsNamespace('llm-pi-ai'), {
+    await expect(ctx.settings.update('llm-pi-ai', {
       providers: {
         'acme-gateway': {
           api: 'openai-completions',
@@ -963,7 +980,7 @@ describe('compat switches', () => {
     const server = await mockServer([{ events: textEvents }])
     const dir = await home()
     const ctx = await bootWithSettings(dir, {})
-    await ctx.settings.update(settingsNamespace('llm-pi-ai'), {
+    await ctx.settings.update('llm-pi-ai', {
       providers: {
         'acme-gateway': {
           apiKeyEnv: KEY_ENV,
@@ -1039,8 +1056,8 @@ describe('compat switches', () => {
   })
 
   it('refuses a compat key no wire protocol declares instead of dropping it', () => {
-    // The silent drop is what let an unreadable switch look applied: schemastery
-    // passes unknown keys through, and resolution used to read only two fields.
+    // Schemastery passes unknown keys through, so silently dropping one would
+    // make an unreadable switch look applied; the resolver must refuse it.
     expect(() => resolveProfiles({
       'acme-gateway': {
         api: 'openai-completions',
@@ -1051,14 +1068,16 @@ describe('compat switches', () => {
     })).toThrow(/compat "supportsDevelperRole", which no wire protocol declares; the configurable switches are .*\bsupportsDeveloperRole\b/)
   })
 
-  it('refuses a compat key pi-ai’s catalog owns, pointing at the catalog route', () => {
-    expect(() => resolveProfiles({
-      'acme-gateway': {
-        api: 'openai-completions',
-        baseURL: 'https://acme.test',
-        models: [{ id: 'acme-a', compat: { openRouterRouting: {} } as never }],
-      },
-    })).toThrow(/compat "openRouterRouting", which is not configurable here/)
+  it('refuses compat keys pi-ai’s catalog owns, pointing at the catalog route', () => {
+    for (const compat of [{ openRouterRouting: {} }, { supportsAdditionalTools: true }]) {
+      expect(() => resolveProfiles({
+        'acme-gateway': {
+          api: 'openai-completions',
+          baseURL: 'https://acme.test',
+          models: [{ id: 'acme-a', compat: compat as never }],
+        },
+      })).toThrow(/which is not configurable here/)
+    }
   })
 })
 
@@ -1073,6 +1092,7 @@ describe('resolution snapshots', () => {
       // Credential resolution is the real await inside a stream call, and the
       // window a configuration change has to land in.
       resolveApiKey: async () => { await held; return 'k' },
+      auth: memoryAuth(),
     })
 
     const chunks: StreamChunk[] = []
@@ -1101,7 +1121,11 @@ describe('resolution snapshots', () => {
     const first = await mockServer([{ events: textEvents }])
     const second = await mockServer([{ events: textEvents }])
     let current = resolveProfiles({ deepseek: { baseURL: `${first.url}/v1` } })
-    const adapter = new PiAiAdapter({ profiles: () => current, resolveApiKey: () => Promise.resolve('k') })
+    const adapter = new PiAiAdapter({
+      profiles: () => current,
+      resolveApiKey: () => Promise.resolve('k'),
+      auth: memoryAuth(),
+    })
     const drain = async (): Promise<void> => {
       for await (const _chunk of adapter.stream({
         provider: 'deepseek', model: 'deepseek-v4-flash', messages: [],
@@ -1121,14 +1145,13 @@ describe('configurable-provider directory', () => {
   it('keeps the previous directory when a route collides with another adapter family', async () => {
     const dir = await home()
     const ctx = await bootWithSettings(dir, {})
-    // Another adapter family owns this route id, exactly as llm-deepseek does.
     ctx.llm.registerConfigurableProviders([
       { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] },
     ])
     const before = ctx.llm.listConfigurableProviders().length
     expect(before).toBeGreaterThan(30)
 
-    await ctx.settings.update(settingsNamespace('llm-pi-ai'), {
+    await ctx.settings.update('llm-pi-ai', {
       providers: {
         'deepseek-official': {
           api: 'openai-completions',
@@ -1150,7 +1173,7 @@ describe('configurable-provider directory', () => {
     const ctx = await bootWithSettings(dir, {})
     const catalogOnly = ctx.llm.listConfigurableProviders().length
 
-    await ctx.settings.update(settingsNamespace('llm-pi-ai'), {
+    await ctx.settings.update('llm-pi-ai', {
       providers: {
         'acme-gateway': {
           displayName: 'Acme Gateway',
@@ -1164,34 +1187,26 @@ describe('configurable-provider directory', () => {
     expect(ctx.llm.listConfigurableProviders().find(entry => entry.provider === 'acme-gateway')?.displayName)
       .toBe('Acme Gateway')
 
-    await ctx.settings.replace(settingsNamespace('llm-pi-ai'), {})
+    await ctx.settings.replace('llm-pi-ai', {})
     expect(ctx.llm.listConfigurableProviders()).toHaveLength(catalogOnly)
   })
 
-  it('withholds a catalog route this adapter cannot authenticate', async () => {
+  it('offers every installed catalog route, including one that only signs in', async () => {
     const ctx = await harness({})
     const offered = ctx.llm.listConfigurableProviders().map(entry => entry.provider)
 
     // `openai-codex` is the one installed provider that authenticates through
-    // OAuth alone. pi-ai resolves OAuth only from a *stored* credential, this
-    // adapter constructs its collection with no credential store, and nothing
-    // here runs a login flow — so every request on such a route fails with
-    // `Provider is not configured` before it goes out. Offering it would put a
-    // provider on the settings page that no amount of configuration can make
-    // work.
-    expect(offered).not.toContain('openai-codex')
-    // A provider that offers OAuth *beside* an api-key method keeps its entry:
-    // the key is a path this adapter can serve.
+    // OAuth alone. It is offered like any other because the collection now
+    // carries a durable credential store and a login flow writes into it, so
+    // the route has a posture that works rather than only one that fails.
+    expect(offered).toContain('openai-codex')
     expect(offered).toContain('anthropic')
     expect(offered).toContain('openai')
   })
 
-  it('still lists a withheld route a stored profile names, as a catalog route', async () => {
-    // Withholding the offer must not strand a profile someone already stored:
-    // the route keeps its entry so a configuration surface can edit or delete
-    // it, and `declared` still answers catalog membership rather than the
-    // offer, so the page does not mislabel it as a route this deployment
-    // invented.
+  it('lists a route a stored profile names as a catalog route, not a declared one', async () => {
+    // `declared` answers catalog membership, so a profile stored against a
+    // route pi-ai ships is not mislabelled as one this deployment invented.
     const ctx = await harness({ providers: { 'openai-codex': { apiKeyEnv: KEY_ENV } } })
 
     expect(ctx.llm.listConfigurableProviders()).toContainEqual({
@@ -1201,53 +1216,5 @@ describe('configurable-provider directory', () => {
       settingsPath: ['providers', 'openai-codex'],
       declared: false,
     })
-  })
-
-  it('spells the tabled providers pretty and links their console pages, and only those', async () => {
-    const ctx = await harness({})
-    const directory = new Map(ctx.llm.listConfigurableProviders().map(entry => [entry.provider, entry]))
-
-    // Every table entry, pinned so a table edit without a matching test edit
-    // fails here.
-    const expected: Record<string, { displayName: string; consoleUrl: string }> = {
-      openai: { displayName: 'OpenAI', consoleUrl: 'https://platform.openai.com/api-keys' },
-      anthropic: { displayName: 'Anthropic', consoleUrl: 'https://console.anthropic.com/settings/keys' },
-      openrouter: { displayName: 'OpenRouter', consoleUrl: 'https://openrouter.ai/keys' },
-      groq: { displayName: 'Groq', consoleUrl: 'https://console.groq.com/keys' },
-      together: { displayName: 'Together AI', consoleUrl: 'https://api.together.xyz/settings/api-keys' },
-      mistral: { displayName: 'Mistral AI', consoleUrl: 'https://console.mistral.ai/api-keys' },
-      deepseek: { displayName: 'DeepSeek', consoleUrl: 'https://platform.deepseek.com/api-keys' },
-      xai: { displayName: 'xAI', consoleUrl: 'https://console.x.ai/' },
-      google: { displayName: 'Google', consoleUrl: 'https://aistudio.google.com/apikey' },
-      cerebras: { displayName: 'Cerebras', consoleUrl: 'https://cloud.cerebras.ai/' },
-      fireworks: { displayName: 'Fireworks AI', consoleUrl: 'https://fireworks.ai/account/api-keys' },
-    }
-    for (const [provider, facts] of Object.entries(expected)) {
-      expect(directory.get(provider), provider).toMatchObject(facts)
-    }
-    // A catalog provider no table names keeps the raw route key and carries
-    // no consoleUrl; the same holds for `openai-codex` above.
-    const untabled = directory.get('zai')
-    expect(untabled?.displayName).toBe('zai')
-    expect(untabled).not.toHaveProperty('consoleUrl')
-  })
-
-  it('lets a profile displayName win, while a defaulted one yields to the table spelling', async () => {
-    const ctx = await harness({
-      providers: {
-        openai: { apiKeyEnv: KEY_ENV },
-        anthropic: { apiKeyEnv: KEY_ENV, displayName: 'Claude (work)' },
-      },
-    })
-    const directory = new Map(ctx.llm.listConfigurableProviders().map(entry => [entry.provider, entry]))
-
-    // A stored profile must not demote the pretty spelling back to the route
-    // key just because the profile never named one.
-    expect(directory.get('openai')).toMatchObject({
-      displayName: 'OpenAI',
-      declared: false,
-      consoleUrl: 'https://platform.openai.com/api-keys',
-    })
-    expect(directory.get('anthropic')?.displayName).toBe('Claude (work)')
   })
 })

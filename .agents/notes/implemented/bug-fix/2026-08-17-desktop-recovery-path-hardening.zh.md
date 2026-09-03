@@ -6,7 +6,7 @@ Status: implemented
 
 ## 问题
 
-Windows 市场插件隔离与崩溃恢复动作（构建在[把 dshmarket 打进 web profile](../feature/2026-08-16-bundle-dshmarket-into-web-profile.md) 之上）读取 `profiles/web/package.json` 时既没有存在性检查，调用它的 `app.whenReady()` 链上也没有 `.catch()`。全新安装从未运行过 Harness 子进程，`PROFILE_TEMPLATES.web` 还没有把该文件生成出来（`packages/boot/app-boot/src/profile.ts` 的 `loadProfile`/`initProfile` 只在子进程内运行）；对它 `readFile` 会抛 `ENOENT`，而 `index.ts` 里这条 rejection 之上没有任何东西能接住。Electron 会把 `whenReady` 延续中的未捕获 rejection 变成静默卡死：没有窗口、没有日志行、没有恢复页——每个全新 Windows 安装的用户在见到应用之前就会撞上，这严格地比恢复路径本要处理的原生崩溃更糟。
+Windows 市场插件隔离与崩溃恢复动作（构建在[把 dshmarket 打进 web profile](../feature/2026-08-16-bundle-dshmarket-into-web-profile.zh.md) 之上）读取 `profiles/web/package.json` 时既没有存在性检查，调用它的 `app.whenReady()` 链上也没有 `.catch()`。全新安装从未运行过 Harness 子进程，`PROFILE_TEMPLATES.web` 还没有把该文件生成出来（`packages/boot/app-boot/src/profile.ts` 的 `loadProfile`/`initProfile` 只在子进程内运行）；对它 `readFile` 会抛 `ENOENT`，而 `index.ts` 里这条 rejection 之上没有任何东西能接住。Electron 会把 `whenReady` 延续中的未捕获 rejection 变成静默卡死：没有窗口、没有日志行、没有恢复页——每个全新 Windows 安装的用户在见到应用之前就会撞上，这严格地比恢复路径本要处理的原生崩溃更糟。
 
 另外，`build/installer.nsh` 的进程退出轮询调用了 `nsExec::ExecToStack`，却只 `Pop` 了返回码。`ExecToStack` 会先压返回码、再压捕获到的输出文本；把第二个值留在共享的 NSIS 变量栈上、循环最多 20 次，会让同一次安装run中之后每一个无条件 `Pop` 错位（包括 electron-builder 自带模板代码），这是一条潜在的安装器损坏路径，且本地没有任何检查能发现它——`makensis` 与 `--config.win.signAndEditExecutable=false` 交叉构建两种情况都能干净编译通过。
 

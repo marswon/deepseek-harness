@@ -6,11 +6,11 @@ Status: implemented
 
 ## Problem
 
-Windows 会锁定每个运行中可执行文件及其已加载 DLL 所在的目录。桌面壳此前把受监督的 `dsh web` 子进程——内嵌的 `node.exe` 及整个 `dsh-runtime` N-API 树——从安装目录内启动，NSIS 更新器因此必须对一个满是活进程的目录做关闭并替换。实际使用中这既造成了“无法关闭”的重试死循环（见[退出次序 note](2026-08-16-desktop-update-stops-harness-first.md)，它只修了次序），更严重的是还出过一次替换到一半的残缺安装，子进程随后每次启动都报 `ERR_MODULE_NOT_FOUND`，直到手动重装。
+Windows 会锁定每个运行中可执行文件及其已加载 DLL 所在的目录。桌面壳此前把受监督的 `dsh web` 子进程——内嵌的 `node.exe` 及整个 `dsh-runtime` N-API 树——从安装目录内启动，NSIS 更新器因此必须对一个满是活进程的目录做关闭并替换。实际使用中这既造成了“无法关闭”的重试死循环（见[退出次序 note](2026-08-16-desktop-update-stops-harness-first.zh.md)，它只修了次序），更严重的是还出过一次替换到一半的残缺安装，子进程随后每次启动都报 `ERR_MODULE_NOT_FOUND`，直到手动重装。
 
 ## Decision
 
-**从桌面数据根目录下按版本暂存的副本运行运行时。** 首次启动（以及每次更新后，以 `app.getVersion()` 为键）时，`stagePackagedRuntime` 把 `resources/dsh-runtime` 复制到 `<userData>/runtimes/<version>-<platform>-<arch>`，子进程从副本启动；副本里的 Node 必须通过 `node --version` 探测才会写入完成标记（见[架构键暂存笔记](2026-08-21-desktop-runtime-arch-keyed-staging.md)）。安装目录从此只承载 Electron 本体，NSIS 的关闭/强杀路径对它可靠；Harness 运行的任何内容都不可能再锁住安装器要替换的文件。暂存是崩溃安全的——副本先落在 `.staging-*` 兄弟目录，探测通过、写完完成标记后才改名就位，被杀掉的应用绝不会留下半截运行时；旧版本与残留暂存目录在成功暂存后清理。`resolveHarnessRuntime` 封装了这一步，开发模式原样透传。
+**从桌面数据根目录下按版本暂存的副本运行运行时。** 首次启动（以及每次更新后，以 `app.getVersion()` 为键）时，`stagePackagedRuntime` 把 `resources/dsh-runtime` 复制到 `<userData>/runtimes/<version>-<platform>-<arch>`，子进程从副本启动；副本里的 Node 必须通过 `node --version` 探测才会写入完成标记（见[架构键暂存笔记](2026-08-21-desktop-runtime-arch-keyed-staging.zh.md)）。安装目录从此只承载 Electron 本体，NSIS 的关闭/强杀路径对它可靠；Harness 运行的任何内容都不可能再锁住安装器要替换的文件。暂存是崩溃安全的——副本先落在 `.staging-*` 兄弟目录，探测通过、写完完成标记后才改名就位，被杀掉的应用绝不会留下半截运行时；旧版本与残留暂存目录在成功暂存后清理。`resolveHarnessRuntime` 封装了这一步，开发模式原样透传。
 
 ## Alternatives considered
 

@@ -6,7 +6,15 @@ English | [中文](README.zh.md)
 
 **DeepSeek Harness Desktop** is the desktop app for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), the open-source agent harness from DeepSeek AI. One installer gives you the full agent workspace — no Node.js, no terminal setup.
 
+It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
+
+Upstream documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+
 ## Download
+
+DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+
+Review the [safety notice](SAFETY.md) before running the project.
 
 Get the latest build from [Releases](https://github.com/marswon/deepseek-harness/releases/latest):
 
@@ -49,6 +57,8 @@ After install, the app downloads updates in the background and applies them on r
 ## Relationship to upstream
 
 This repository forks [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) and adds the desktop shell (`apps/desktop`), the onboarding wizard, and the bundled plugin market. The harness core tracks upstream. See [docs/architecture.md](docs/architecture.md) for the architecture and [AGENTS.md](AGENTS.md) for contributor guidance.
+
+Upstream community: submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions), add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability, or join the <a href="https://discord.gg/Ycq5dCaS4">DeepSeek Harness Discord community</a>.
 
 ## Contributing
 

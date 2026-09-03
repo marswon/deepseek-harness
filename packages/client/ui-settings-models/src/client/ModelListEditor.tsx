@@ -16,22 +16,17 @@
 
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import type { DiscoveredModelView, IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
-import {
-  Button, IconChevronDownOutline14, IconChevronRightOutline14, IconPlusOutline16, IconTrashOutline16,
-  Input, Modal,
-} from '@deepseek-ai/dsh-client-ui-primitives'
+import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-api-remotes/client'
+import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { formatCapacity, parseCapacity } from './DeepSeekModelsEditor.tsx'
+import type { ModelsOperations } from './operations.ts'
 import type { DeepSeekModelDraft } from './DeepSeekModelsEditor.tsx'
-import { messageOf } from './store.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
 
 /**
- * One configured model row. Structurally open, exactly like the DeepSeek
- * catalog editor's rows: a profile field this card does not edit — one a future
- * schema adds, or one hand-written in `settings.yaml` — has to survive being
- * edited here rather than being dropped by a rebuild.
+ * One configured model row. Fields this card does not edit must survive an
+ * edit rather than being dropped by a rebuild.
  */
 export type ModelDraft = DeepSeekModelDraft
 
@@ -84,12 +79,36 @@ export interface ModelListEditorProps {
    * told what the field already says.
    */
   probeBlocked?: keyof typeof en | undefined
-  /** Wire face the fetch action calls. */
-  api: Pick<IApiClient, 'llm'>
+  /** The Host operations whose interrogation answers the fetch action. */
+  operations: ModelsOperations
   /** Section copy. */
   t: (key: keyof typeof en) => string
   /** Disable every control (read-only deployment or a pending write). */
   disabled: boolean
+}
+
+/** Disclosure chevron; rotates to point down while its row is open. */
+function IconChevron({ open }: { open: boolean }): ReactNode {
+  return (
+    <svg
+      width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden
+      style={{ transform: open ? 'rotate(90deg)' : undefined, transition: 'transform 120ms ease' }}
+    >
+      <path d="M6 3.5L10.5 8L6 12.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/** Removal glyph for one model row. */
+function IconTrash(): ReactNode {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9a1 1 0 001 .9h4.6a1 1 0 001-.9L12 4M6.5 6.8v4.4M9.5 6.8v4.4"
+        stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  )
 }
 
 /** The two token counts edited as K/M-suffixed text behind a row's disclosure. */
@@ -123,7 +142,7 @@ function capacitySpelling(value: number | undefined): string {
 }
 
 /** Adopt a candidate, keeping whatever capacities the provider disclosed. */
-function adopt(candidate: DiscoveredModelView): ModelDraft {
+function adopt(candidate: LlmDiscoveredModel): ModelDraft {
   return {
     id: candidate.id,
     ...candidate.name === undefined ? {} : { name: candidate.name },
@@ -138,11 +157,12 @@ function adopt(candidate: DiscoveredModelView): ModelDraft {
  * @returns the model-list editor.
  */
 export function ModelListEditor(props: ModelListEditorProps): ReactNode {
-  const { models, onChange, probe, api, t, disabled } = props
+  const { models, onChange, probe, operations, t, disabled } = props
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | undefined>(undefined)
-  const [candidates, setCandidates] = useState<readonly DiscoveredModelView[] | undefined>(undefined)
+  const [candidates, setCandidates] = useState<readonly LlmDiscoveredModel[] | undefined>(undefined)
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set())
+  const [candidateQuery, setCandidateQuery] = useState('')
   // Rows carry an id and a name; capacities are the exception, so they stay
   // folded until asked for rather than crowding every row with four inputs.
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set())
@@ -210,18 +230,17 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
     setBusy(true)
     setFailure(undefined)
     try {
-      const response = await api.llm.discoverModels({
-        settingsNs: probe.settingsNs,
+      const answer = await operations.discoverModels(probe.settingsNs, {
         ...probe.provider === undefined ? {} : { provider: probe.provider },
         ...probe.baseURL === undefined || probe.baseURL.length === 0 ? {} : { baseURL: probe.baseURL },
         ...probe.api === undefined ? {} : { api: probe.api },
         ...probe.apiKey === undefined ? {} : { apiKey: probe.apiKey },
       })
-      if (!response.result.ok) {
-        setFailure(response.result.error.message)
+      if (answer.kind === 'refused') {
+        setFailure(answer.message)
         return
       }
-      const found = response.result.value.models
+      const found = answer.models
       if (found.length === 0) {
         setFailure(t('fetchEmpty'))
         return
@@ -229,12 +248,9 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
       // Everything already configured starts unchecked, so adopting a
       // selection never silently rewrites a capacity the user corrected.
       const known = new Set(models.map(model => textOf(model, 'id')))
+      setCandidateQuery('')
       setCandidates(found)
       setPicked(new Set(found.filter(model => !known.has(model.id)).map(model => model.id)))
-    } catch (error) {
-      // The transport rejected rather than answering; without this the button
-      // would stay busy with nothing shown.
-      setFailure(messageOf(error))
     } finally {
       setBusy(false)
     }
@@ -243,6 +259,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   const closePicker = (): void => {
     setCandidates(undefined)
     setPicked(new Set())
+    setCandidateQuery('')
   }
 
   const adoptPicked = (): void => {
@@ -270,14 +287,23 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   }
 
   const activeCandidates = candidates ?? []
-  const allCandidatesPicked = activeCandidates.length > 0
-    && activeCandidates.every(candidate => picked.has(candidate.id))
+  const normalizedCandidateQuery = candidateQuery.trim().toLowerCase()
+  const visibleCandidates = normalizedCandidateQuery.length === 0
+    ? activeCandidates
+    : activeCandidates.filter(candidate => candidate.id.toLowerCase().includes(normalizedCandidateQuery)
+      || candidate.name?.toLowerCase().includes(normalizedCandidateQuery) === true)
+  const allVisibleCandidatesPicked = visibleCandidates.length > 0
+    && visibleCandidates.every(candidate => picked.has(candidate.id))
 
-  const toggleAllCandidates = (): void => {
+  const toggleVisibleCandidates = (): void => {
     setPicked((current) => {
-      return activeCandidates.every(candidate => current.has(candidate.id))
-        ? new Set()
-        : new Set(activeCandidates.map(candidate => candidate.id))
+      const next = new Set(current)
+      if (visibleCandidates.every(candidate => current.has(candidate.id))) {
+        for (const candidate of visibleCandidates) next.delete(candidate.id)
+      } else {
+        for (const candidate of visibleCandidates) next.add(candidate.id)
+      }
+      return next
     })
   }
 
@@ -299,20 +325,18 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
         </div>
         {props.overridden === true && props.onReset !== undefined
           ? (
-            <Button
-              variant="ghost"
-              size="sm"
+            <button
+              type="button"
               className={styles['linkButton']}
               disabled={disabled}
               onClick={props.onReset}
             >
               {t('resetModels')}
-            </Button>
+            </button>
           )
           : null}
-        <Button
-          variant="ghost"
-          size="sm"
+        <button
+          type="button"
           className={styles['linkButton']}
           disabled={disabled || busy || !askable || props.probeBlocked !== undefined}
           title={props.probeBlocked !== undefined
@@ -321,13 +345,14 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
           onClick={() => { void fetchModels() }}
         >
           {busy ? t('fetching') : t('fetchModels')}
-        </Button>
+        </button>
       </div>
       {models.length === 0 ? <p className={styles['modelEmpty']}>{t('modelsEmpty')}</p> : null}
       {models.map((model, index) => (
         <div key={index} className={styles['modelEntry']}>
           <div className={styles['modelRow']}>
-            <Input
+            <input
+              className={styles['input']}
               type="text"
               value={textOf(model, 'id')}
               placeholder={t('modelId')}
@@ -335,7 +360,8 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               disabled={disabled}
               onChange={(event) => { patch(index, { id: event.target.value }) }}
             />
-            <Input
+            <input
+              className={styles['input']}
               type="text"
               value={textOf(model, 'name')}
               placeholder={t('modelName')}
@@ -351,9 +377,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               title={t('modelAdvanced')}
               onClick={() => { toggleExpanded(index) }}
             >
-              <span className={styles['iconGlyph']} aria-hidden="true">
-                {expanded.has(index) ? <IconChevronDownOutline14 /> : <IconChevronRightOutline14 />}
-              </span>
+              <IconChevron open={expanded.has(index)} />
             </button>
             <button
               type="button"
@@ -378,9 +402,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                 setEditing(current => reindexOnRemove(current, index))
               }}
             >
-              <span className={styles['iconGlyph']} aria-hidden="true">
-                <IconTrashOutline16 size={14} />
-              </span>
+              <IconTrash />
             </button>
           </div>
           {expanded.has(index)
@@ -388,7 +410,8 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               <div className={styles['modelAdvanced']}>
                 <label className={styles['modelField']}>
                   <span className={styles['modelFieldLabel']}>{t('modelContextWindow')}</span>
-                  <Input
+                  <input
+                    className={styles['input']}
                     type="text"
                     inputMode="numeric"
                     value={capacityText(model, index, 'contextWindow')}
@@ -400,7 +423,8 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                 </label>
                 <label className={styles['modelField']}>
                   <span className={styles['modelFieldLabel']}>{t('modelMaxTokens')}</span>
-                  <Input
+                  <input
+                    className={styles['input']}
                     type="text"
                     inputMode="numeric"
                     value={capacityText(model, index, 'maxTokens')}
@@ -415,16 +439,14 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
             : null}
         </div>
       ))}
-      <Button
-        variant="outline"
-        size="sm"
+      <button
+        type="button"
         className={styles['addModelButton']}
-        icon={<IconPlusOutline16 size={14} />}
         disabled={disabled}
         onClick={() => { onChange([...models, { id: '' }]) }}
       >
         {t('addModel')}
-      </Button>
+      </button>
       {failure !== undefined ? <p className={styles['error']}>{failure}</p> : null}
       <Modal
         open={candidates !== undefined}
@@ -440,29 +462,45 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
           </>
         )}
       >
-        <div className={styles['candidateActions']}>
-          <Button variant="ghost" size="sm" onClick={toggleAllCandidates}>
-            {t(allCandidatesPicked ? 'fetchDeselectAll' : 'fetchSelectAll')}
+        <div className={styles['candidateToolbar']}>
+          <input
+            className={`${styles['input']} ${styles['candidateSearch']}`}
+            type="search"
+            value={candidateQuery}
+            placeholder={t('fetchSearch')}
+            aria-label={t('fetchSearch')}
+            onChange={(event) => { setCandidateQuery(event.target.value) }}
+          />
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={visibleCandidates.length === 0}
+            onClick={toggleVisibleCandidates}
+          >
+            {t(allVisibleCandidatesPicked ? 'fetchDeselectAll' : 'fetchSelectAll')}
           </Button>
         </div>
-        <ul className={styles['candidateList']}>
-          {(candidates ?? []).map(candidate => (
-            <li key={candidate.id} className={styles['candidate']}>
-              <label className={styles['candidateLabel']}>
-                <input
-                  type="checkbox"
-                  className={styles['candidateCheck']}
-                  checked={picked.has(candidate.id)}
-                  onChange={() => { toggle(candidate.id) }}
-                />
-                {/* The id alone: it is the string adoption writes, and the
-                    capacities the endpoint reported are adopted with it and
-                    editable in the row that appears. */}
-                <span className={styles['candidateId']}>{candidate.id}</span>
-              </label>
-            </li>
-          ))}
-        </ul>
+        {visibleCandidates.length === 0
+          ? <p className={styles['candidateEmpty']} role="status">{t('fetchNoMatches')}</p>
+          : (
+            <ul className={styles['candidateList']}>
+              {visibleCandidates.map(candidate => (
+                <li key={candidate.id} className={styles['candidate']}>
+                  <label className={styles['candidateLabel']}>
+                    <input
+                      type="checkbox"
+                      checked={picked.has(candidate.id)}
+                      onChange={() => { toggle(candidate.id) }}
+                    />
+                    {/* The id alone: it is the string adoption writes, and the
+                        capacities the endpoint reported are adopted with it and
+                        editable in the row that appears. */}
+                    <span className={styles['candidateId']}>{candidate.id}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
       </Modal>
     </section>
   )

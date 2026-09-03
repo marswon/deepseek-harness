@@ -14,7 +14,7 @@ Status: implemented
 
 ## Alternatives considered
 
-**在其父目录中 reveal 该工作区目录**（`host.revealPath`，见 [reveal note](2026-08-16-host-reveal-path.md)）。此入口不采用：工作区手势要的是打开目录本身，而不是打开父目录并选中它——openPath 才是正确的动词，reveal 保持文件级语义。
+**在其父目录中 reveal 该工作区目录**（`host.revealPath`，见 [reveal note](2026-08-16-host-reveal-path.zh.md)）。此入口不采用：工作区手势要的是打开目录本身，而不是打开父目录并选中它——openPath 才是正确的动词，reveal 保持文件级语义。
 
 **放在 hover 卡片里而不是菜单行。** hover 卡片本就能展示并复制完整路径，但可发现性正是被报告的痛点；⋯ 菜单是行级动词的居所（重命名/删除），入口应在其中。
 

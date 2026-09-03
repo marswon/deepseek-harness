@@ -17,7 +17,7 @@ dshmarket 需要 Corepack 和 pnpm，但打包运行时只有 Node 解释器。�
 - Windows：从 `app-update.yml` 的 `updaterCacheDirName` 解析 pending 安装器路径，先强杀该目录中遗留的安装器，再启动 detached PowerShell 等待器。等待器只在 Electron PID 消失后才带 `--updated --force-run` 运行 NSIS；pending 路径无法解析时回退到 `quitAndInstall`。
 - NSIS：`build/installer.nsh` 替换原生运行进程弹窗，强杀后在替换文件前进行有界轮询。
 - macOS：把 dmg 下载到 `userData/updates/<版本>`，打开它并给出拖拽替换的指引。当前发布渠道没有 Apple Developer 凭据，带 tag 的构建保持 ad-hoc 签名，替换后会触发 Gatekeeper 提示。
-- [内嵌 Node 运行时](2026-08-14-desktop-bundled-node-runtime.md)携带 Corepack 和 npm。桌面 overlay 会关闭 dshmarket 不受管理的重启，Harness 重启由 Electron 菜单接管。
+- [内嵌 Node 运行时](2026-08-14-desktop-bundled-node-runtime.zh.md)携带 Corepack 和 npm。桌面 overlay 会关闭 dshmarket 不受管理的重启，Harness 重启由 Electron 菜单接管。
 
 ## 否决的方案
 

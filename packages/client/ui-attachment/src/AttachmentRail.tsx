@@ -8,13 +8,13 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import css from './AttachmentRail.module.css'
 
-/** One rail item (thumbnail or file chip); strings arrive resolved (zero-cordis atom). */
+/** One rail thumbnail; strings arrive resolved (zero-cordis atom). */
 export interface AttachmentRailItem {
   /** Stable identity for the React key. */
   id: string
-  /** Object or data URL rendered as the thumbnail; absent = a text-file name chip (no open affordance). */
-  previewUrl?: string
-  /** Display name (image alt text or chip label, with the owner's fallback applied). */
+  /** Object or data URL rendered as the thumbnail. */
+  previewUrl: string
+  /** Image alt text (display name with the owner's fallback applied). */
   alt: string
   /** Accessible label of the item's remove control. */
   removeLabel: string
@@ -58,9 +58,9 @@ function pageBehavior(): ScrollBehavior {
  * reveals on hover or focus. The owner decides mounting; it renders the rail
  * only while items exist.
  *
- * @param props.items - resolved thumbnails and file chips in draft order.
+ * @param props.items - resolved thumbnails in draft order.
  * @param props.labels - rail-level strings (group name, open tooltip, arrows).
- * @param props.onOpen - single-click open of one image item's original image (file chips carry no open control).
+ * @param props.onOpen - single-click open of one item's original image.
  * @param props.onRemove - remove one item from the draft.
  * @returns the rail group with its paging arrows.
  */
@@ -165,19 +165,15 @@ export function AttachmentRail<T extends AttachmentRailItem>({ items, labels, on
         onScroll={updateEdges}
       >
         {items.map(item => (
-          <div key={item.id} className={clsx(css.item, item.previewUrl === undefined && css.itemFile)}>
-            {item.previewUrl === undefined ? (
-              <span className={css.fileChip} title={item.alt}>{item.alt}</span>
-            ) : (
-              <button
-                type="button"
-                className={css.thumbnail}
-                title={labels.open}
-                onClick={() => { onOpen(item) }}
-              >
-                <img src={item.previewUrl} alt={item.alt} />
-              </button>
-            )}
+          <div key={item.id} className={css.item}>
+            <button
+              type="button"
+              className={css.thumbnail}
+              title={labels.open}
+              onClick={() => { onOpen(item) }}
+            >
+              <img src={item.previewUrl} alt={item.alt} />
+            </button>
             <button
               type="button"
               className={css.remove}

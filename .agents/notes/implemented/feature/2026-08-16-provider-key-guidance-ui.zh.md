@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-后端已经补上了两个指引事实（见[后端笔记](2026-08-16-provider-key-guidance-backend.md)）：可配置提供方目录上的 `consoleUrl`，以及 `llm.discoverModels` 的 `validate: true`——把端点探测变成一次真实的密钥校验回环。但 UI 没有任何承载面：用户在提供方编辑器里粘贴密钥后，只能先保存、再看会话报错才知道密钥是否可用；首次启动的用户面对的则是一张光秃秃的凭证表单，既不知道 API Key 是什么，也不知道去哪里获取。
+后端已经补上了两个指引事实（见[后端笔记](2026-08-16-provider-key-guidance-backend.zh.md)）：可配置提供方目录上的 `consoleUrl`，以及 `llm.discoverModels` 的 `validate: true`——把端点探测变成一次真实的密钥校验回环。但 UI 没有任何承载面：用户在提供方编辑器里粘贴密钥后，只能先保存、再看会话报错才知道密钥是否可用；首次启动的用户面对的则是一张光秃秃的凭证表单，既不知道 API Key 是什么，也不知道去哪里获取。
 
 ## Decision
 

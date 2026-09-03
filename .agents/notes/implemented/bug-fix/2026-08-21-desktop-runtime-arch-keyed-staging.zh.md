@@ -8,7 +8,7 @@ Status: implemented
 
 一位 Ubuntu x86_64 用户从 rc.33 升级到 rc.35 后，桌面壳启动即失败：受监管的子进程打印 `node: 1: ELF...: not found` / `node: 2: Syntax error: ")" unexpected` 并以退出码 2 退出。这几行是 dash 把 ELF 当脚本解释的输出——`execve` 返回 ENOEXEC 时 glibc 的 `execvp` 会回退到 `/bin/sh`，而对一个格式完好的 ELF 来说 ENOEXEC 意味着内核拒绝其机器类型：暂存的 `node-runtime/bin/node` 是一个与 CPU 架构不符的 Linux 二进制。发布产物已逐字节排除嫌疑（两个 deb 的 `md5sums` 里内置 node 的条目与官方 Node.js v22.21.1 发行包在 x64 和 arm64 上完全一致，且 AppImage 与 deb 共用同一份暂存运行时），所以外来二进制只存在于用户的数据根目录里。
 
-[userData 暂存笔记](2026-08-16-desktop-runtime-staged-under-userdata.md)当时只按应用版本给暂存副本命名，并无条件信任完成标记。home 目录在不同架构的机器间共享、同步或迁移过——或任何手工放置的副本——都会把异架构运行时钉在 `runtimes/<version>` 下，而标记文件让它在之后每次启动都生效，除了手工删目录没有任何恢复路径。
+[userData 暂存笔记](2026-08-16-desktop-runtime-staged-under-userdata.zh.md)当时只按应用版本给暂存副本命名，并无条件信任完成标记。home 目录在不同架构的机器间共享、同步或迁移过——或任何手工放置的副本——都会把异架构运行时钉在 `runtimes/<version>` 下，而标记文件让它在之后每次启动都生效，除了手工删目录没有任何恢复路径。
 
 ## 决策
 

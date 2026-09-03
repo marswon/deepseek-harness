@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import type {
-  ComposerAttachmentsOwnerProps, ComposerAttachmentsProps, ComposerImageAttachment,
+  ComposerAttachment, ComposerAttachmentsOwnerProps, ComposerAttachmentsProps,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { ComposerAttachments } from '../src/client/ComposerAttachments.tsx'
 
@@ -44,10 +44,10 @@ const t = ((key: string, params?: Readonly<Record<string, unknown>>): string => 
   return messages[key] ?? key
 }) as ComposerAttachmentsProps['t']
 
-function attachment(id: string, name = `${id}.png`): ComposerImageAttachment {
+function attachment(id: string, name = `${id}.png`): ComposerAttachment {
   return {
     kind: 'image',
-    id: id as ComposerImageAttachment['id'],
+    id: id as ComposerAttachment['id'],
     file: new File([Uint8Array.of(1)], name, { type: 'image/png' }),
     previewUrl: `blob:${id}`,
   }

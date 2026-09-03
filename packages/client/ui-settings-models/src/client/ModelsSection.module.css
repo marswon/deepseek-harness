@@ -1,11 +1,4 @@
-/* Models settings section, in the settings-panel design language: 14/22 body,
- * 12/18 caption, capsule controls from the ui-primitives Button (h36 r18;
- * h28 r14 where a row is dense), 32px fields from the Input primitive, and
- * `border-l2` hairlines — the vocabulary GeneralSection and the primitives
- * already use. This sheet keeps only what the primitives do not own: layout,
- * the danger/quiet recolorings, and the select chevron.
- *
- * Every color resolves through a `--dsw-alias-*` token. Bare `--border` /
+/* Every color resolves through a `--dsw-alias-*` token. Bare `--border` /
  * `--surface` / `--text-*` names, which nothing in this app defines, would
  * render the light-mode literals written as their fallbacks and stay light
  * under the dark theme. */
@@ -13,30 +6,9 @@
 .section {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   max-width: 720px;
   color: var(--dsw-alias-label-primary);
-}
-
-/* The app has no global border-box reset, so without this an outlined
-   capsule stands 2px taller than the filled one beside it (Cancel next to
-   Apply, Edit next to Delete). Scoped to the surfaces this section paints;
-   the dialogs are portaled to the body, so they are named separately. */
-.section button,
-.fetchDialog button,
-.deleteDialog button {
-  box-sizing: border-box;
-}
-
-/* The Button primitive carries no focus ring; keyboard focus stays visible
-   on every control this page composes. */
-.section button:focus-visible,
-.fetchDialog button:focus-visible,
-.deleteDialog button:focus-visible,
-.customizedSummary:focus-visible,
-.iconButton:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
 }
 
 .title {
@@ -68,27 +40,22 @@
   color: var(--dsw-alias-state-success-primary);
 }
 
-/* The load-failure retry sits directly in the section column, which would
-   otherwise stretch it to full width. */
-.retryButton {
-  align-self: flex-start;
-}
-
 .rows {
   list-style: none;
-  margin: 0;
+  /* Extra air between the title/intro block and the first provider card. */
+  margin: 12px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 /* A configured provider: outlined on the panel fill, so the filled editor
    card it expands into reads as the nested object. */
 .rowCard {
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
-  padding: 12px 16px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 16px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -98,7 +65,6 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 28px;
 }
 
 .rowIdentity {
@@ -122,7 +88,7 @@
 .rowTag {
   flex: none;
   padding: 1px 6px;
-  border: 1px solid var(--dsw-alias-border-l3);
+  border: 0.5px solid var(--dsw-alias-border-l3);
   border-radius: 4px;
   font-size: 11px;
   line-height: 16px;
@@ -136,6 +102,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  corner-shape: round;
 }
 
 .credentialDotConfigured {
@@ -149,19 +116,107 @@
 .rowActions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   margin-left: auto;
 }
 
-/* Ghost capsule recolored to the danger family; the Button primitive owns
-   the geometry. */
+/* `box-sizing` on every control here: the app has no global border-box reset,
+   so without it the outlined variants stand 2px taller than the filled ones
+   they sit beside (Cancel next to Apply, Edit next to Delete). */
+.primaryButton,
+.secondaryButton,
+.addButton {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 18px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.primaryButton {
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.secondaryButton,
+.addButton {
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+}
+
+.secondaryButton:hover:not(:disabled),
+.addButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}
+
 .dangerButton {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 18px;
+  background: transparent;
   color: var(--dsw-alias-state-error-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  cursor: pointer;
 }
 
 .dangerButton:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover-danger);
-  color: var(--dsw-alias-state-error-primary);
+}
+
+/* Provider-row controls take the dense capsule (Button `.sm`). */
+.rowActions .secondaryButton,
+.rowActions .dangerButton {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 14px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled,
+.addButton:disabled,
+.linkButton:disabled,
+.addModelButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.primaryButton:focus-visible,
+.secondaryButton:focus-visible,
+.dangerButton:focus-visible,
+.addButton:focus-visible,
+.linkButton:focus-visible,
+.addModelButton:focus-visible,
+.iconButton:focus-visible,
+.customizedSummary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
 }
 
 /* Editing surface: a filled module on the panel, matching the settings
@@ -200,52 +255,6 @@
   gap: 6px;
 }
 
-/* Key input with its 检查 button beside it; the Input primitive's wrapper is
-   the flexible half. */
-.keyRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.keyRow > :first-child {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* The check never reads as a commit: ghost capsule, pinned to the field edge. */
-.keyCheckButton {
-  flex: none;
-}
-
-.keyCheckSuccess {
-  margin: 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-state-success-primary);
-}
-
-/* Get-a-key guidance under the key row: caption quiet text with the one link
-   in the business accent, the same way a fault line stays small. */
-.keyGuidance {
-  margin: 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.keyGuidanceLink {
-  color: var(--dsw-alias-state-business-primary);
-  text-decoration: none;
-}
-
-.keyGuidanceLink:hover {
-  text-decoration: underline;
-}
-
 .fieldLabel {
   display: inline-flex;
   align-items: center;
@@ -256,13 +265,24 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-/* Quiet text action (restore defaults, fetch models) on the ghost capsule's
-   geometry, toned down so it never competes with the commit row. */
 .linkButton {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
   color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
 }
 
 .linkButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -293,22 +313,18 @@
   gap: 10px;
 }
 
-/* These two are not pills sitting in a footer but the last slot of the
-   provider list, so they split the row evenly and repeat the row cards'
-   corner. Dashed, like every other "nothing here yet" affordance on this
-   page, to read as a place rather than a command. */
 .addButton {
+  /* Overrides the shared button base above: these two are not pills sitting in
+     a footer but the last slot of the provider list, so they split the row
+     evenly and repeat the row cards' corner. Dashed, like every other "nothing
+     here yet" affordance on this page, to read as a place rather than a
+     command. */
   flex: 1 1 0;
   min-width: 180px;
   gap: 6px;
   height: 44px;
   border: 1px dashed var(--dsw-alias-border-l3);
-  border-radius: 12px;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.addButton:hover:not(:disabled) {
-  color: var(--dsw-alias-label-primary);
+  border-radius: 16px;
 }
 
 .addCard,
@@ -330,11 +346,11 @@
 }
 
 .customized {
-  border-top: 1px solid var(--dsw-alias-border-l2);
-  padding-top: 12px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  padding-top: 10px;
 }
 
-/* Native disclosure marker replaced by the shared chevron glyph: the built-in
+/* Native disclosure marker replaced by a rotating chevron: the built-in
    triangle differs per engine and cannot take the label color. */
 .customizedSummary {
   display: flex;
@@ -356,21 +372,22 @@
   display: none;
 }
 
-.customizedSummary:hover {
-  color: var(--dsw-alias-label-primary);
-}
-
-/* The primitives chevron, pointing down while folded and rotating up when
-   the body opens — the ModelSelect trigger's treatment. */
-.customizedChevron {
-  display: inline-flex;
-  flex: none;
-  color: var(--dsw-alias-label-tertiary);
+.customizedSummary::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentcolor;
+  border-bottom: 1.5px solid currentcolor;
+  transform: rotate(-45deg) translate(-1px, -1px);
   transition: transform 120ms ease;
 }
 
-.customized[open] > .customizedSummary .customizedChevron {
-  transform: rotate(180deg);
+.customized[open] > .customizedSummary::before {
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.customizedSummary:hover {
+  color: var(--dsw-alias-label-primary);
 }
 
 .customizedBody {
@@ -388,9 +405,9 @@
 .modelCatalog {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   padding-top: 12px;
-  border-top: 1px solid var(--dsw-alias-border-l2);
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
 }
 
 .modelCatalogHeading {
@@ -434,19 +451,16 @@
 }
 
 .modelEntry {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l4);
   border-radius: 10px;
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  padding: 6px;
 }
 
 .modelRow {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 28px 28px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 /* Square, label-free affordances: the row's own inputs carry the meaning, so
@@ -459,7 +473,7 @@
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   background: transparent;
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
@@ -481,19 +495,11 @@
   color: var(--dsw-alias-state-error-primary);
 }
 
-/* Decorative glyph seat inside an icon-only button: the accessible name is
-   the button's aria-label, so the svg stays out of the tree; inline-flex
-   keeps the glyph on the button's center line rather than its baseline. */
-.iconGlyph {
-  display: inline-flex;
-}
-
 .modelAdvanced {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 8px;
-  padding: 10px 2px 2px;
-  border-top: 1px solid var(--dsw-alias-border-l2);
+  padding: 8px 4px 2px;
 }
 
 .modelField {
@@ -515,19 +521,34 @@
   text-align: center;
 }
 
-/* Left-pinned in the catalog column, which would otherwise stretch it. */
 .addModelButton {
+  box-sizing: border-box;
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
 }
 
-/* Text fields come from the Input primitive; this base remains for the
-   native <select>, which no primitive covers. */
+.addModelButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
 .input {
   box-sizing: border-box;
   width: 100%;
   height: 32px;
   padding: 0 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--dsw-alias-border-l4);
   border-radius: 8px;
   font: inherit;
   font-size: 14px;
@@ -546,6 +567,10 @@ select.input {
 .input:focus {
   outline: none;
   border-color: var(--dsw-alias-brand-primary);
+}
+
+.input::placeholder {
+  color: var(--dsw-alias-label-dimmed);
 }
 
 .input:disabled {
@@ -587,8 +612,20 @@ select.input {
   background: var(--dsw-alias-interactive-bg-hover-danger);
 }
 
+/* Icon-button label seat: named for assistive tech and for the tests that
+   query these controls by their text. */
+.hiddenLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .customizedChevron {
+  .customizedSummary::before,
+  .switchThumb {
     transition: none;
   }
 }
@@ -604,69 +641,52 @@ select.input {
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
-.candidateActions {
+.candidateToolbar {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 6px;
 }
 
-/* The candidate picker as a bordered sheet of rows, not a bare list: the
-   frame separates it from the dialog chrome, and each row takes the menu
-   vocabulary (hover fill, accent fill while picked). */
+.candidateSearch {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
 .candidateList {
   display: flex;
   flex-direction: column;
   gap: 2px;
   max-height: 320px;
   margin: 0;
-  padding: 4px;
   overflow-y: auto;
+  padding: 0;
   list-style: none;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
 }
 
 .candidate {
-  border-radius: 8px;
-}
-
-.candidate:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-/* Picked rows keep a fill so the selection still reads mid-scroll, where the
-   check alone would be the only signal. */
-.candidate:has(.candidateCheck:checked) {
-  background: var(--dsw-alias-interactive-bg-hover-accent);
-}
-
-/* Keyboard focus lands on the checkbox; the ring draws around its row. */
-.candidate:focus-within {
-  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+  border-radius: 6px;
 }
 
 .candidateLabel {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
+  gap: 8px;
+  padding: 6px 8px;
   cursor: pointer;
-}
-
-.candidateCheck {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  cursor: pointer;
-  accent-color: var(--dsw-alias-brand-primary);
 }
 
 .candidateId {
   flex: 1 1 auto;
-  min-width: 0;
   font-family: var(--ds-font-family-code);
   font-size: 13px;
-  line-height: 20px;
   overflow-wrap: anywhere;
+}
+
+.candidateEmpty {
+  margin: 24px 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
 }

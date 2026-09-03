@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-21-desktop-runtime-arch-keyed-staging.md
 2026-08-21-desktop-runtime-arch-keyed-staging.md: 1a1a737a36b0a694787e01512ea3d42dbfbdb004
-2026-08-21-desktop-runtime-arch-keyed-staging.zh.md: d37c3b5594052b8e5187d4651ab98fc07ce7bde1
+2026-08-21-desktop-runtime-arch-keyed-staging.zh.md: 958c2c3dca75a380c0af917322bbd4e31834adf5

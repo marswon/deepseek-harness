@@ -14,7 +14,6 @@
  */
 
 import type { ReactNode } from 'react'
-import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
 
@@ -27,11 +26,11 @@ export interface EditorFooterProps {
   /** Whether the commit is refused, as judged by the owning card. */
   submitDisabled: boolean
   /** Commit label while idle. */
-  submitLabel: keyof typeof en
+  submitLabelKey: keyof typeof en
   /** Commit label while a commit is in flight. */
-  submitBusyLabel: keyof typeof en
+  submitBusyLabelKey: keyof typeof en
   /** Dismiss label; defaults to the settings editor copy. */
-  cancelLabel?: keyof typeof en
+  cancelLabelKey?: keyof typeof en
   /** Dismiss the card without committing. */
   onCancel: () => void
   /** Run the card's commit. */
@@ -47,20 +46,22 @@ export function EditorFooter(props: EditorFooterProps): ReactNode {
   const { t } = props
   return (
     <div className={styles['editorActions']}>
-      <Button
-        variant="outline"
+      <button
+        type="button"
+        className={styles['secondaryButton']}
         disabled={props.busy}
         onClick={props.onCancel}
       >
-        {t(props.cancelLabel ?? 'cancel')}
-      </Button>
-      <Button
-        variant="primary"
+        {t(props.cancelLabelKey ?? 'cancel')}
+      </button>
+      <button
+        type="button"
+        className={styles['primaryButton']}
         disabled={props.submitDisabled}
         onClick={props.onSubmit}
       >
-        {props.busy ? t(props.submitBusyLabel) : t(props.submitLabel)}
-      </Button>
+        {props.busy ? t(props.submitBusyLabelKey) : t(props.submitLabelKey)}
+      </button>
     </div>
   )
 }

@@ -1,7 +1,4 @@
 // @vitest-environment jsdom
-// AttachmentRail behavior in the jsdom lane: item rendering and callbacks,
-// arrow paging over stubbed scroll geometry (jsdom lays nothing out), the
-// exclusive vertical-wheel pan, and the new-item end reveal.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
@@ -160,21 +157,6 @@ describe('AttachmentRail', () => {
       expect(scrollBy).toHaveBeenCalledWith({ left: 200, behavior })
       view.unmount()
     }
-  })
-
-  it('renders a previewUrl-less item as a name chip with remove but no open control', () => {
-    const onOpen = vi.fn()
-    const onRemove = vi.fn()
-    const chip: AttachmentRailItem = { id: 'f', alt: 'notes.md', removeLabel: '移除文件 notes.md' }
-    const items = [item('a'), chip]
-    const view = render(<AttachmentRail items={items} labels={labels} onOpen={onOpen} onRemove={onRemove} />)
-    expect(view.getByText('notes.md')).toBeTruthy()
-    // Only the thumbnail item carries the open control.
-    expect(view.getAllByTitle('查看原图')).toHaveLength(1)
-    expect([...view.getByRole('group', { name: '待发送图片' }).querySelectorAll('img')]).toHaveLength(1)
-    fireEvent.click(view.getByRole('button', { name: '移除文件 notes.md' }))
-    expect(onRemove).toHaveBeenCalledWith(chip)
-    expect(onOpen).not.toHaveBeenCalled()
   })
 
   it('reveals the rail end when an item is added, not when one is removed', () => {

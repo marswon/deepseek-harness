@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-Web 作曲器此前只接受图片（粘贴与整页拖放，见[多模态图片输入 note](2026-07-22-web-multimodal-image-input-and-durable-attachments.md) 与[加入上限 note](2026-08-12-web-image-intake-and-limits-alignment.md)），其 README 还把前置加号按钮记录为"不是附件入口"。把源码或文本文件附进提示词——Codex 式的手势——在客户端完全没有路径。
+Web 作曲器此前只接受图片（粘贴与整页拖放，见[多模态图片输入 note](2026-07-22-web-multimodal-image-input-and-durable-attachments.zh.md) 与[加入上限 note](2026-08-12-web-image-intake-and-limits-alignment.zh.md)），其 README 还把前置加号按钮记录为"不是附件入口"。把源码或文本文件附进提示词——Codex 式的手势——在客户端完全没有路径。
 
 ## Decision
 

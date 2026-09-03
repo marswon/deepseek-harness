@@ -6,7 +6,15 @@
 
 **DeepSeek Harness 桌面版**是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DeepSeek AI 开源的 Agent 运行时）的桌面应用。一个安装包即可拥有完整的 Agent 工作区——无需安装 Node.js，无需命令行配置。
 
+它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
+
+上游文档：[https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+
 ## 下载
+
+DeepSeek Harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
+
+运行本项目前，请阅读[安全说明](SAFETY.zh.md)。
 
 从 [Releases](https://github.com/marswon/deepseek-harness/releases/latest) 获取最新版本：
 
@@ -48,15 +56,19 @@ Linux 上请优先选择 `.deb`：Ubuntu 24.04 及以后限制了非特权 user 
 
 ## 与上游的关系
 
-本仓库 fork 自 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)，在其之上增加了桌面外壳（`apps/desktop`）、首启向导与内置插件市场。Harness 核心持续跟踪上游。架构说明见 [docs/architecture.md](docs/architecture.md)，贡献者指南见 [AGENTS.md](AGENTS.md)。
+本仓库 fork 自 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)，在其之上增加了桌面外壳（`apps/desktop`）、首启向导与内置插件市场。Harness 核心持续跟踪上游。架构说明见 [docs/architecture.md](docs/architecture.zh.md)，贡献者指南见 [AGENTS.md](AGENTS.md)。
+
+上游社区：通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告；为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现；欢迎加入 DeepSeek Harness 企微群：扫码添加企微小助手并填写入群问卷，完成后小助手会邀请你入群。
 
 ## 参与贡献
 
-见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+参见 [CONTRIBUTING.md](CONTRIBUTING.zh.md)。
 
 ## 开发
 
-从 [开发指南](docs/development.md) 与 [架构文档](docs/architecture.md) 开始。对于 Agent，请遵循 [AGENTS.md](AGENTS.md)。
+请先阅读[开发指南](docs/development.zh.md)与[架构文档](docs/architecture.zh.md)。
+
+面向 agent：请遵循 [AGENTS.md](AGENTS.md)。
 
 ## 许可证
 
