@@ -1,6 +1,6 @@
 /** Published dsh web + pnpm dev:web → browser HMR, with no page reload. */
 
-import { existsSync, globSync } from 'node:fs'
+import { existsSync, globSync, statSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -74,9 +74,16 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
   const binPath = join(REPO_ROOT, 'apps/cli/lib/bin.js')
   if (!existsSync(binPath)) throw new Error('HMR browser test needs the built dsh bin; run pnpm run build first')
   const clientBuildEnvironment = readClientBuildRecord(REPO_ROOT).environment
-  const clientBundlePaths = globSync('packages/*/*/lib/client.js{,.map}', { cwd: REPO_ROOT })
-    .map(path => join(REPO_ROOT, path))
-  const originalClientBundles = await Promise.all(clientBundlePaths.map(async path => [path, await readFile(path)] as const))
+  // The watcher's initial `vite build --watch` pass rewrites apps/web/dist with
+  // dev-mode hashed assets, so the restore set must cover the build record's
+  // whole artifact surface — dist included — or built-boot's digest check
+  // fails on every later test in the lane.
+  const artifactPaths = globSync(
+    ['apps/web/dist/**/*', 'packages/*/*/lib/client.js', 'packages/*/*/lib/client.js.map'],
+    { cwd: REPO_ROOT },
+  ).filter(path => statSync(join(REPO_ROOT, path)).isFile())
+  const originalClientBundles = await Promise.all(artifactPaths.map(async path =>
+    [join(REPO_ROOT, path), await readFile(join(REPO_ROOT, path))] as const))
   const originalSource = await readFile(sourcePath)
   const oldText = 'Into the Unknown'
   const sourceNeedle = "'hero.headline': 'Into the Unknown'"
@@ -133,6 +140,18 @@ it('hot-reloads a real client-plugin source edit without refreshing the page', a
     if (watcher !== undefined) await stopTree(watcher).catch((error: unknown) => failures.push(error))
     await Promise.all(originalClientBundles.map(async ([path, content]) => {
       await writeFile(path, content).catch((error: unknown) => failures.push(error))
+    }))
+    // The watcher may have emitted dev-mode dist assets that did not exist at
+    // capture time; byte restores alone would leave them behind to break the
+    // build record's digest (fileCount arm) for built-boot later in the lane.
+    const restoredPaths = new Set(originalClientBundles.map(([path]) => path))
+    const lingering = globSync(
+      ['apps/web/dist/**/*', 'packages/*/*/lib/client.js', 'packages/*/*/lib/client.js.map'],
+      { cwd: REPO_ROOT },
+    ).map(path => join(REPO_ROOT, path))
+      .filter(path => statSync(path).isFile() && !restoredPaths.has(path))
+    await Promise.all(lingering.map(async (path) => {
+      await rm(path).catch((error: unknown) => failures.push(error))
     }))
     if (host !== undefined) await stopTree(host).catch((error: unknown) => failures.push(error))
     await browser?.close().catch((error: unknown) => failures.push(error))
