@@ -16,7 +16,8 @@
  * and the active loader are module-level slots. The "starts with nothing loaded"
  * case asserts the instance the spec holds is the one that did the work.
  */
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -126,6 +127,95 @@ const archive = async (): Promise<Uint8Array> =>
     expect(result.roster).toEqual([SUBJECT])
     expect(result.packages.has(SUBJECT)).toBe(true)
     expect(result.missing).toEqual([])
+  })
+
+  it('admits a bare name only when it resolves as a package', () => {
+    const result = packVfsImage({
+      config: `- id: subject\n  name: '${SUBJECT}'\n- id: preset\n  name: some-preset-name\n- id: yaml\n  name: js-yaml\n`,
+      profile: 'bare-name-check',
+      workspaces,
+      resolveFrom: repoRoot,
+      entries: [],
+    })
+    // `some-preset-name` is preset metadata: nothing installable carries that
+    // name, so the resolvability check keeps it out of the roster instead of
+    // reporting it missing.
+    expect(result.roster).toEqual([SUBJECT, 'js-yaml'])
+    expect(Object.hasOwn(result.files, 'node_modules/js-yaml/package.json')).toBe(true)
+    expect(result.missing).toEqual([])
+  })
+
+  it('resolves a bare seed through a rosterResolveFrom install anchor', () => {
+    // Synthesize the CLI install anchor: a package pnpm keeps under the
+    // anchor's own node_modules, beyond the repository root's reach — the
+    // shape `dshmarket` has under apps/cli.
+    const anchor = mkdtempSync(join(tmpdir(), 'dsh-pack-anchor-'))
+    try {
+      const anchored = join(anchor, 'node_modules', 'anchor-only-pkg')
+      mkdirSync(anchored, { recursive: true })
+      writeFileSync(join(anchored, 'package.json'), JSON.stringify({
+        name: 'anchor-only-pkg',
+        version: '0.0.0',
+        type: 'module',
+        main: 'index.js',
+      }))
+      writeFileSync(join(anchored, 'index.js'), 'export const anchored = true\n')
+      const config = `- id: subject\n  name: '${SUBJECT}'\n- id: anchored\n  name: anchor-only-pkg\n`
+      const result = packVfsImage({
+        config,
+        profile: 'anchor-check',
+        workspaces,
+        resolveFrom: repoRoot,
+        rosterResolveFrom: [anchor],
+        entries: [],
+      })
+      expect(result.roster).toEqual([SUBJECT, 'anchor-only-pkg'])
+      expect(Object.hasOwn(result.files, 'node_modules/anchor-only-pkg/package.json')).toBe(true)
+      // An external roster seed is named by a Loader row at runtime, so the
+      // reachability sweep roots its export face rather than pruning it.
+      expect(Object.hasOwn(result.files, 'node_modules/anchor-only-pkg/index.js')).toBe(true)
+      expect(result.missing).toEqual([])
+
+      // Without the anchor the same name resolves nowhere and stays out.
+      const unanchored = packVfsImage({
+        config,
+        profile: 'anchor-check',
+        workspaces,
+        resolveFrom: repoRoot,
+        entries: [],
+      })
+      expect(unanchored.roster).toEqual([SUBJECT])
+      expect(unanchored.missing).toEqual([])
+    } finally {
+      rmSync(anchor, { recursive: true, force: true })
+    }
+  })
+
+  it('admits a bare name carried by a workspace package', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'dsh-pack-bare-workspace-'))
+    try {
+      writeFileSync(join(directory, 'package.json'), JSON.stringify({
+        name: 'bare-workspace-pkg',
+        version: '0.0.0',
+        type: 'module',
+        exports: { '.': './index.js' },
+      }))
+      writeFileSync(join(directory, 'index.js'), 'export const marker = 1\n')
+      const synthetic = new Map(workspaces)
+      synthetic.set('bare-workspace-pkg', directory)
+      const result = packVfsImage({
+        config: `- id: subject\n  name: '${SUBJECT}'\n- id: bare\n  name: bare-workspace-pkg\n`,
+        profile: 'bare-workspace-check',
+        workspaces: synthetic,
+        resolveFrom: repoRoot,
+        entries: [],
+      })
+      expect(result.roster).toEqual([SUBJECT, 'bare-workspace-pkg'])
+      expect(Object.hasOwn(result.files, 'node_modules/bare-workspace-pkg/package.json')).toBe(true)
+      expect(result.missing).toEqual([])
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
   })
 
   it('records the wrapper contract in the manifest and rewrote what it visited', () => {

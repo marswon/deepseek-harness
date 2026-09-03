@@ -25,6 +25,19 @@ const WORKSPACE_SCAN_ROOTS = ['vendor', 'packages', 'native/landlock-run/package
 /** Composition entry point package: the `dsh` CLI, run from source. */
 const CLI_PACKAGE = 'apps/cli'
 
+/**
+ * The `dsh` CLI package directory: the install anchor for dependencies the
+ * CLI alone declares, which pnpm keeps under its own `node_modules` rather
+ * than hoisting to the repository root. Feed it to
+ * {@link PackOptions.rosterResolveFrom} so a roster seed naming a CLI-only
+ * bundle (the web profile's `dshmarket`) resolves.
+ * @param repoRoot - Absolute repository root.
+ * @returns Absolute CLI package directory.
+ */
+export function cliPackageDir(repoRoot: string): string {
+  return join(repoRoot, CLI_PACKAGE)
+}
+
 /** Composition entry point: the `dsh` CLI, run from source. */
 const CLI_ENTRY = `${CLI_PACKAGE}/src/bin.ts`
 
@@ -114,7 +127,7 @@ interface ConfigTreeDeclaration {
  * @returns Trees with absolute source directories.
  */
 export function configTrees(repoRoot: string): ConfigTree[] {
-  const packageDir = join(repoRoot, CLI_PACKAGE)
+  const packageDir = cliPackageDir(repoRoot)
   const manifest = JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')) as {
     dsh?: { configTrees?: unknown }
   }

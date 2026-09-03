@@ -27,7 +27,7 @@ import { chromium } from 'playwright'
 import type { Browser } from 'playwright'
 import { expect, it } from 'vitest'
 import {
-  composeProfile, configTrees, indexWorkspacePackages, packVfsImage, packVfsOverlay,
+  cliPackageDir, composeProfile, configTrees, indexWorkspacePackages, packVfsImage, packVfsOverlay,
   previewFixtures, WRAPPER_CONTRACT,
 } from '@deepseek-ai/dsh-experimental-webworker-packer'
 import {
@@ -138,6 +138,7 @@ function requireVfsAssets(): PreviewAssets {
     profile: PROFILE,
     workspaces: indexWorkspacePackages(REPO_ROOT),
     resolveFrom: REPO_ROOT,
+    rosterResolveFrom: [cliPackageDir(REPO_ROOT)],
     configTrees: configTrees(REPO_ROOT),
   })
   if (packed.missing.length > 0) {

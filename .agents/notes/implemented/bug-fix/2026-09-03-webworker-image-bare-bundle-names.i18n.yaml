@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-03-webworker-image-bare-bundle-names.md
+2026-09-03-webworker-image-bare-bundle-names.md: 734e33f5aa75d8afc7fac4f6ec68c695b158b695
+2026-09-03-webworker-image-bare-bundle-names.zh.md: 2385750a81aa483d69835a53f4fa082d43222cc7

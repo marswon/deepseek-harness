@@ -83,6 +83,14 @@ export interface PackOptions {
   readonly workspaces: ReadonlyMap<string, string>
   /** Directory Node-style dependency resolution walks up from for the roster. */
   readonly resolveFrom: string
+  /**
+   * Additional resolution roots for roster seed entries only: a profile may
+   * name a bare bundle package that the `dsh` CLI alone depends on, which
+   * pnpm keeps under the CLI package's own `node_modules` rather than
+   * hoisting to the repository root — beyond {@link resolveFrom}'s reach.
+   * Transitive dependencies still resolve from their importer's directory.
+   */
+  readonly rosterResolveFrom?: readonly string[]
   /** Config trees to copy in beside the composition. */
   readonly configTrees?: readonly ConfigTree[]
   /** Empty directories to create; defaults to `home/`, `workspace/`, `tmp/`. */
@@ -147,41 +155,47 @@ function packageNameOf(specifier: string): string {
 
 /**
  * Collect module-specifier `name` fields from parsed entry rows, recursively
- * through nested `config` row lists (groups). Builtin rows (`cordis:group`)
- * and preset metadata documents carry names that are not module specifiers;
- * only names with a scope or a path separator count.
+ * through nested `config` row lists (groups). A name with a scope or a path
+ * separator is a module specifier outright and joins `names`; any other
+ * string name is ambiguous — a bare package name such as the web profile's
+ * `dshmarket`, or preset metadata such as an agent preset id — and joins
+ * `bare` when the caller passes one, whose resolvability check discriminates.
  * @param rows - Parsed YAML value; anything but an entry array is ignored.
- * @param names - Package names collected so far.
+ * @param names - Scoped or pathed package names collected so far.
+ * @param bare - Bare string names collected so far; omitted callers drop them.
  */
-function moduleNamesOf(rows: unknown, names: Set<string>): void {
+function moduleNamesOf(rows: unknown, names: Set<string>, bare?: Set<string>): void {
   if (!Array.isArray(rows)) return
   for (const row of rows) {
     if (typeof row !== 'object' || row === null) continue
     const { name, config } = row as { name?: unknown; config?: unknown }
-    if (typeof name === 'string' && (name.startsWith('@') || name.includes('/'))) {
-      names.add(packageNameOf(name))
+    if (typeof name === 'string') {
+      if (name.startsWith('@') || name.includes('/')) names.add(packageNameOf(name))
+      else bare?.add(name)
     }
-    moduleNamesOf(config, names)
+    moduleNamesOf(config, names, bare)
   }
 }
 
 /**
  * Package names the composition names.
  * @param config - Composed profile; `!!js` scalars parse under Include's dialect.
+ * @param bare - Collector for bare string names, for the caller to discriminate.
  * @returns Package names, deduplicated.
  */
-function rosterOf(config: string): string[] {
+function rosterOf(config: string, bare?: Set<string>): string[] {
   const names = new Set<string>()
-  moduleNamesOf(yaml.load(config, { schema: entryListSchema }), names)
+  moduleNamesOf(yaml.load(config, { schema: entryListSchema }), names, bare)
   return [...names]
 }
 
 /**
  * Package names the compositions under one config tree name.
  * @param root - Directory to walk.
+ * @param bare - Collector for bare string names, for the caller to discriminate.
  * @returns Package names, deduplicated.
  */
-function treeRosterOf(root: string): string[] {
+function treeRosterOf(root: string, bare?: Set<string>): string[] {
   const names = new Set<string>()
   const walk = (directory: string): void => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -191,7 +205,7 @@ function treeRosterOf(root: string): string[] {
         continue
       }
       if (!entry.name.endsWith('.yml') && !entry.name.endsWith('.yaml')) continue
-      moduleNamesOf(yaml.load(readFileSync(absolute, 'utf8'), { schema: entryListSchema }), names)
+      moduleNamesOf(yaml.load(readFileSync(absolute, 'utf8'), { schema: entryListSchema }), names, bare)
     }
   }
   walk(root)
@@ -213,6 +227,23 @@ function resolveDependency(fromDirectory: string, name: string): string | undefi
     if (parent === directory) return undefined
     directory = parent
   }
+}
+
+/**
+ * Resolve a roster seed across its anchors, primary root first. A seed the
+ * primary root cannot reach may live under an additional install anchor
+ * ({@link PackOptions.rosterResolveFrom}); transitive dependencies never use
+ * this — they resolve from their importer alone.
+ * @param anchors - Directories to walk up from, in order.
+ * @param name - Package name.
+ * @returns The real path of the package directory, or undefined.
+ */
+function resolveSeed(anchors: readonly string[], name: string): string | undefined {
+  for (const anchor of anchors) {
+    const directory = resolveDependency(anchor, name)
+    if (directory !== undefined) return directory
+  }
+  return undefined
 }
 
 /**
@@ -284,11 +315,14 @@ interface SweepOutcome {
 /**
  * Keep only the JavaScript the worker can reach, transforming it on the way.
  *
- * Roots are the export faces of every materialized workspace and vendored
- * package — the harness addresses them by constructed name at runtime (Loader
- * rows, typert faces, delegating providers such as `-auto` pickers), so the
- * sweep prunes files only inside third-party packages — plus the worker
- * assembly's own image entries. Resolution runs the runtime loader's own
+ * Roots are the export faces of every materialized roster package — the harness
+ * addresses workspace and vendored packages by constructed name at runtime
+ * (Loader rows, typert faces, delegating providers such as `-auto` pickers),
+ * and an external roster seed (the web profile's bare `dshmarket`) is named
+ * directly by a Loader row — plus the worker assembly's own image entries.
+ * Transitive third-party dependencies keep no face roots, so the sweep prunes
+ * files only inside third-party packages a roster package never names.
+ * Resolution runs the runtime loader's own
  * algorithm over the candidate set, so pack-time reachability and boot-time
  * resolution cannot drift, and a request that resolves nowhere — an undeclared
  * or missing dependency — fails the pack rather than the boot.
@@ -299,7 +333,7 @@ interface SweepOutcome {
  * this pass cannot see.
  * @param files - Candidate entries after the publish-view filter.
  * @param options - Pack options carrying the sweep roots.
- * @param rootPackages - Roster package names from the workspace.
+ * @param rootPackages - Materialized roster names whose export faces root the sweep.
  * @param root - Virtual root the candidates mount under.
  * @returns The final entries plus the sweep's counts.
  */
@@ -390,7 +424,7 @@ function sweepImage(
       ? ['.']
       : Object.keys(manifest.exports).filter(key => key.startsWith('.') && !key.includes('*'))
     for (const subpath of subpaths) {
-      queue.push({ specifier: subpath === '.' ? name : `${name}/${subpath.slice(2)}`, from: root, importer: `workspace face ${name}` })
+      queue.push({ specifier: subpath === '.' ? name : `${name}/${subpath.slice(2)}`, from: root, importer: `roster face ${name}` })
     }
   }
 
@@ -500,7 +534,7 @@ function dropExecutables(files: ImageFiles): string[] {
 /**
  * Materialize the dependency closure of every roster package into the image.
  * @param roster - Package names to start from.
- * @param options - Pack options carrying the workspace index and resolution root.
+ * @param options - Pack options carrying the workspace index and resolution roots.
  * @returns Image entries, per-package file counts, and unresolved dependencies.
  */
 function materialize(
@@ -511,12 +545,15 @@ function materialize(
   const packages = new Map<string, number>()
   const missing: string[] = []
   const replaced = new Set(REPLACED_EXTERNAL_PACKAGES)
-  const queue: { name: string; from: string }[] = roster.map(name => ({ name, from: options.resolveFrom }))
+  const seedAnchors = [options.resolveFrom, ...(options.rosterResolveFrom ?? [])]
+  const queue: { name: string; from: string; seed?: true }[] =
+    roster.map(name => ({ name, from: options.resolveFrom, seed: true }))
 
   for (let entry = queue.shift(); entry !== undefined; entry = queue.shift()) {
     const { name, from } = entry
     if (packages.has(name) || replaced.has(name)) continue
-    const directory = options.workspaces.get(name) ?? resolveDependency(from, name)
+    const directory = options.workspaces.get(name)
+      ?? (entry.seed === true ? resolveSeed(seedAnchors, name) : resolveDependency(from, name))
     if (directory === undefined) {
       missing.push(`${name} (from ${relative(options.resolveFrom, from) || '.'})`)
       continue
@@ -599,17 +636,31 @@ export function packVfsImage(options: PackOptions): PackResult {
     }
   }
 
+  const bare = new Set<string>()
   const roster = [...new Set([
-    ...rosterOf(options.config),
-    ...configTrees.filter(tree => tree.scanRoster === true).flatMap(tree => treeRosterOf(tree.directory)),
+    ...rosterOf(options.config, bare),
+    ...configTrees.filter(tree => tree.scanRoster === true).flatMap(tree => treeRosterOf(tree.directory, bare)),
   ])]
+  // A bare name joins the roster only when it resolves as a package — through
+  // the workspace index, the primary root, or an install anchor. Anything
+  // else is preset metadata (an agent preset id), not a module specifier.
+  const seedAnchors = [options.resolveFrom, ...(options.rosterResolveFrom ?? [])]
+  for (const name of bare) {
+    if (options.workspaces.has(name) || resolveSeed(seedAnchors, name) !== undefined) roster.push(name)
+  }
   const { files, packages, missing } = materialize(roster, options)
 
   files[CONFIG_PATH] = encoder.encode(options.config)
   for (const tree of configTrees) collectTree(tree.directory, files, tree.mount, relativePath => !excluded(relativePath))
 
   const executables = dropExecutables(files)
-  const rootPackages = [...packages.keys()].filter(name => options.workspaces.has(name))
+  // Every materialized roster package roots the sweep by its export faces:
+  // workspace and vendored packages are addressed by constructed name at
+  // runtime, and an external seed (the web profile's bare `dshmarket`) is
+  // named directly by a Loader row. Transitive third-party dependencies stay
+  // prunable — the walk reaches them through their importers.
+  const rootPackages = [...packages.keys()].filter(name =>
+    options.workspaces.has(name) || roster.includes(name))
   const { swept, transform, javascriptEntries, droppedJavascriptEntries, unresolvedExternalRequests } =
     sweepImage(files, options, rootPackages, root)
 
