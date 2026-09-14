@@ -30,14 +30,17 @@ jobs:
       - name: Create unsigned builder config
         shell: bash
         run: |
-          cat > apps/desktop/electron-builder.unsigned.cjs <<'EOF'
-          const { join } = require('node:path')
-          const root = join(__dirname, '..', '..')
-          module.exports = {
+          cat > apps/desktop/electron-builder.unsigned.mjs <<'EOF'
+          import { join } from 'node:path'
+          const root = join(import.meta.dirname, '..', '..')
+          export default {
             appId: 'com.deepseek.harness.test',
             productName: 'DeepSeek Harness',
             artifactName: 'deepseek-harness-${version}-${os}-${arch}.${ext}',
-            directories: { output: join(__dirname, 'release-unsigned') },
+            directories: {
+              app: import.meta.dirname,
+              output: join(import.meta.dirname, 'release-unsigned'),
+            },
             asar: true,
             files: ['lib/*.js', 'lib/*.cjs', 'renderer/**/*', 'package.json'],
             extraResources: [
@@ -57,7 +60,7 @@ jobs:
           EOF
           mkdir -p apps/desktop/.desktop-build/development/runtime apps/desktop/.desktop-build/development/seed
       - name: Package unsigned directory
-        run: pnpm exec electron-builder --config apps/desktop/electron-builder.unsigned.cjs --mac --arm64 --dir --publish never
+        run: pnpm --dir apps/desktop exec electron-builder --config electron-builder.unsigned.mjs --mac --arm64 --dir --publish never
       - name: Upload unsigned app
         uses: actions/upload-artifact@v4
         with:
