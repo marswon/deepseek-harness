@@ -12,9 +12,6 @@ permissions:
 jobs:
   package:
     runs-on: macos-14
-    permissions:
-      contents: read
-      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,19 +27,41 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build Harness and desktop
         run: pnpm run build && pnpm --filter @deepseek-ai/dsh-desktop run build
-      - name: Prepare development project
-        run: pnpm --filter @deepseek-ai/dsh-desktop run prepare:package
+      - name: Create unsigned builder config
+        shell: bash
+        run: |
+          cat > apps/desktop/electron-builder.unsigned.cjs <<'EOF'
+          const { join } = require('node:path')
+          const root = join(__dirname, '..', '..')
+          module.exports = {
+            appId: 'com.deepseek.harness.test',
+            productName: 'DeepSeek Harness',
+            artifactName: 'deepseek-harness-${version}-${os}-${arch}.${ext}',
+            directories: { output: join(__dirname, 'release-unsigned') },
+            asar: true,
+            files: ['lib/*.js', 'lib/*.cjs', 'renderer/**/*', 'package.json'],
+            extraResources: [
+              { from: join(root, 'apps/desktop/.desktop-build/development/runtime'), to: 'runtime' },
+              { from: join(root, 'apps/desktop/.desktop-build/development/seed'), to: 'seed' },
+            ],
+            mac: {
+              category: 'public.app-category.developer-tools',
+              identity: null,
+              forceCodeSigning: false,
+              hardenedRuntime: false,
+              notarize: false,
+              target: ['dir'],
+            },
+            publish: null,
+          }
+          EOF
+          mkdir -p apps/desktop/.desktop-build/development/runtime apps/desktop/.desktop-build/development/seed
       - name: Package unsigned directory
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          CSC_LINK: ''
-          CSC_KEY_PASSWORD: ''
-          DSH_DESKTOP_APP_ID: com.deepseek.harness.test
-        run: pnpm exec electron-builder --config apps/desktop/electron-builder.config.mjs --mac --arm64 --dir --publish never
+        run: pnpm exec electron-builder --config apps/desktop/electron-builder.unsigned.cjs --mac --arm64 --dir --publish never
       - name: Upload unsigned app
         uses: actions/upload-artifact@v4
         with:
           name: dsh-desktop-0.1.5-rc.2-mac-arm64-unsigned
-          path: apps/desktop/release/mac-arm64/
+          path: apps/desktop/release-unsigned/
           if-no-files-found: error
           retention-days: 14
