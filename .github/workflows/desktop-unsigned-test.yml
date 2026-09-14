@@ -1,0 +1,48 @@
+name: Desktop unsigned test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - actions/desktop-0.1.5-unsigned-test
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-14
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build Harness and desktop
+        run: pnpm run build && pnpm --filter @deepseek-ai/dsh-desktop run build
+      - name: Prepare development project
+        run: pnpm --filter @deepseek-ai/dsh-desktop run prepare:package
+      - name: Package unsigned directory
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          CSC_LINK: ''
+          CSC_KEY_PASSWORD: ''
+          DSH_DESKTOP_APP_ID: com.deepseek.harness.test
+        run: pnpm exec electron-builder --config apps/desktop/electron-builder.config.mjs --mac --arm64 --dir --publish never
+      - name: Upload unsigned app
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-desktop-0.1.5-rc.2-mac-arm64-unsigned
+          path: apps/desktop/release/mac-arm64/
+          if-no-files-found: error
+          retention-days: 14
